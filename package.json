@@ -4,6 +4,19 @@
   "type": "module",
   "scripts": {
     "test": "node --test *.test.mjs",
-    "start": "python3 -m http.server 4173"
+    "start": "node dev-server.mjs",
+    "build": "node build.mjs",
+    "db:generate": "drizzle-kit generate"
+  },
+  "engines": {
+    "node": ">=22.16"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "drizzle-kit": "^0.31.8",
+    "drizzle-orm": "^0.45.4"
+  },
+  "overrides": {
+    "esbuild": "^0.25.12"
   }
 }

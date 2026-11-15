@@ -4,13 +4,38 @@ A browser-based, sprite-animated fighting game with five human martial artists i
 
 ## Play locally
 
-From this directory run:
+Requires Node.js 22.16 or newer:
 
 ```sh
-python3 -m http.server 4173
+npm ci
+npm run build
+npm start
 ```
 
-Open http://localhost:4173. No build step or package installation is required. A modern browser with Canvas and ES module support is needed. The optional web fonts load from Google Fonts; system fallbacks work without them.
+Open http://127.0.0.1:4173. For two local online players, open a second browser profile, or open http://localhost:4173 in a second tab: these hostnames have separate development identities. The development server listens only on loopback, supplies local identities, and uses an in-memory SQLite database. Set `LOCAL_DATABASE` to a local `.sqlite` path for persistence. Its identity adapter is never part of the hosted Worker.
+
+Offline Story, VS CPU, local two-player, and the boss showcase can still run with `python3 -m http.server 4173` without installing dependencies. Online mode requires the server above or the deployed service. A modern browser with Canvas and ES modules is needed. Optional Google Fonts have system fallbacks.
+
+## Online matchmaking
+
+Choose **ONLINE**, select your animal style, then **FIND OPPONENT**. The oldest two compatible waiting players are paired automatically. Both connect before the countdown. Each starts with three lives. The server randomly chooses one of the six arenas; the existing 1% home advantage applies. Both players use **WASD + F/G/H**, regardless of which side they spawn on. Touch controls also operate your own fighter.
+
+- Hosted visitors need access under the Site’s sharing policy. Public access requires public publishing to be enabled by the workspace administrator. Online play uses ChatGPT sign-in and one active queue/match per account. No emails or names are sent to opponents.
+- Cancel removes your queue reservation. Leaving an active match concedes it.
+- A refresh restores your session. A disconnected fighter has 10 seconds to return; otherwise the remaining fighter wins. Held inputs expire after 500 ms, so disconnected players cannot continue attacking.
+- If an opponent never connects, the connected player returns to the queue automatically. A waiting reservation expires after 15 seconds without a heartbeat.
+- Both players must request a rematch after a completed fight. Otherwise, find another opponent.
+- Escape, controls dialogs, and switching tabs do not pause an online fight. The game clears held keys when focus is lost.
+
+### Service architecture and deployment
+
+The hosted service is a Cloudflare Worker backed by D1. Atomic queue reservations prevent duplicate assignments. Match updates use a versioned compare-and-swap to preserve simultaneous inputs. The server runs the existing combat engine at 60 fixed steps per simulated second, advancing on incoming requests. Clients submit only validated controls and sequence numbers; health, positions, elapsed time, and winners are determined by the server. The client predicts between authoritative snapshots and corrects to each received state. Short key taps are retained until transmitted.
+
+This first version uses approximately 10 HTTP input/snapshot exchanges per second per active player, plus one queue heartbeat per second. It fits the existing Sites host; it does **not** use the separately hosted Colyseus/WebSocket server considered in the initial plan. It is intended for casual beta play. It has no regional latency-based pairing, skill ratings, rollback lag compensation, or large-scale load validation. High latency can cause visible corrections. A persistent room server is the next scaling step if competitive latency or substantial concurrent traffic is needed.
+
+Production identity comes only from the Sites `oai-authenticated-user-id` header. Requests require same-origin JSON; users cannot read or control another match. Input sequence, payload size and per-player input cadence are checked. Queue records and match snapshots older than 24 hours are removed opportunistically when players join; no long-term match history is retained. The database binding is `DB`.
+
+For Sites, retain the existing project ID in `.openai/hosting.json`, remove the `static` entry, and set `"d1": "DB"` and `"r2": null`. `npm run build` embeds only explicitly listed browser assets and bundles the Worker to `dist/server/index.js`; it does not expose source tests, database schema, or server modules as static routes. Generated immutable schema migrations live in `drizzle/`. After editing `db/schema.ts`, run `npm run db:generate` and inspect the new migration before deploying. Sites applies migrations during deployment.
 
 ## Boss showcase
 
@@ -28,7 +53,7 @@ Open `boss-demo.html` and press **Watch the fight** to run a replayable, roughly
 | Special | H | L |
 | Pause | Escape | Escape |
 
-Choose STORY for the campaign, VS CPU for an exhibition, or 2 PLAYERS for a shared-keyboard duel. Select the P1 or CPU/P2 tab above the roster to change that fighter. Each fighter begins with three lives and 100 health. A knockout removes one life; health resets for the next exchange. The first fighter to lose all three lives loses a regular match. Each solo fight allows **one retry (two attempts total)**, with three lives per attempt. Fighters face each other at the start of every exchange. Specials cost 40 qi, with regeneration and a short cooldown. Touch controls operate Player 1 on small screens. Two-player mode requires a shared keyboard.
+Choose STORY for the campaign, VS CPU for an exhibition, 2 PLAYERS for a shared-keyboard duel, or ONLINE for an automatically matched human opponent. Select the P1 or CPU/P2 tab above the roster to change that fighter. Each fighter begins with three lives and 100 health. A knockout removes one life; health resets for the next exchange. The first fighter to lose all three lives loses a regular match. Each solo fight allows **one retry (two attempts total)**, with three lives per attempt. Fighters face each other at the start of every exchange. Specials cost 40 qi, with regeneration and a short cooldown. Touch controls operate Player 1 on small screens. Two-player mode requires a shared keyboard.
 
 ## Story: the path to mastery
 
@@ -67,7 +92,7 @@ All sprites, animation frames, scenery and sound effects are generated by the ga
 
 ## Six arenas and home advantage
 
-Choose an arena above the match before starting. The selected ground stays fixed through knockouts and rematches. Reset the match to choose a different arena.
+Choose an arena above the match before starting. In offline duels the selected ground stays fixed through knockouts and rematches. Online matches and agreed rematches receive a randomly selected arena. Reset the match to choose a different arena.
 
 | Arena | Home style | Setting |
 | --- | --- | --- |
@@ -100,10 +125,12 @@ The original game-building requests are recorded in [PROMPTS.md](PROMPTS.md).
 - `animation.test.mjs`: animated scenery and animals in every arena, plus reduced-motion behavior.
 - `arenas.test.mjs`: neutral ground, all home/away combinations, CPU parity, mirror matches, dash movement and bonus persistence.
 
-With Node.js 18 or newer:
+With Node.js 22.16 or newer:
 
 ```sh
 node --test *.test.mjs
 ```
 
-Verified: 40 automated tests covering combat, life rules, facing resets, home bonuses, story progression, retry limits, boss transformations, mixed techniques and animated scenery. Browser checks cover the full six-trial journey, loss/retry flows in both solo modes, all boss appearances, the ending and the phone layout. Local QA controls used to reach late-game states are excluded from release files.
+The test suite covers offline combat and story rules plus concurrent matchmaking, odd-sized queues, cancellation races, duplicate tabs, stale reservations, identity and input validation, reconnection, disconnect forfeits, full three-life online fights, mutual rematches, and serialization of attack hit windows. Browser QA covers two independent online sessions, automatic countdown, movement, synchronized damage, refresh/reconnect, cancellation and leaving a match.
+
+Online source files: `online-service.js` (authenticated API and atomic queue), `online-state.js` (authoritative simulation/serialization), `online-client.js` (transport and prediction), `worker.js` (HTTP routing), `db/schema.ts` and `drizzle/` (schema), `build.mjs` (Worker bundle), and `online.test.mjs` (service and client tests).
