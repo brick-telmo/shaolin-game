@@ -1,4 +1,5 @@
 import {FORMS,Match} from './core.js';
+import {OnlineClient} from './online-client.js';
 import {Renderer} from './render.js';
 import {ARENAS} from './arena-data.js';
 import {StoryCampaign} from './story.js';
@@ -13,40 +14,42 @@ function controls(i){return Object.fromEntries(Object.entries(bindings[i]).map((
 function toast(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),2400);}
 function audio(type){if(!soundOn)return;try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();osc.connect(gain);gain.connect(audioCtx.destination);const now=audioCtx.currentTime;const config={hit:[150,45,.13,'sawtooth'],block:[340,130,.1,'triangle'],attack:[170,80,.07,'triangle'],jump:[210,380,.12,'sine'],start:[330,660,.23,'sine'],fight:[440,880,.2,'triangle'],ko:[220,55,.5,'triangle'],over:[330,660,.7,'sine'],select:[440,550,.07,'sine']}[type];if(!config)return;osc.type=config[3];osc.frequency.setValueAtTime(config[0],now);osc.frequency.exponentialRampToValueAtTime(config[1],now+config[2]);gain.gain.setValueAtTime(type==='hit'?.055:.035,now);gain.gain.exponentialRampToValueAtTime(.001,now+config[2]);osc.start(now);osc.stop(now+config[2]);}catch{soundOn=false;$('soundText').textContent='SOUND OFF';}}
 
-function canChooseFighter(){return mode==='story'?campaign.chapterIndex===0&&!campaign.started:['ready','over'].includes(match.phase);}
+const online=new OnlineClient(onlineChanged);
+let onlineScreen='',onlineMatchId=null;
+function canChooseFighter(){if(mode==='online')return ['idle','error'].includes(online.status);return mode==='story'?campaign.chapterIndex===0&&!campaign.started:['ready','over'].includes(match.phase);}
 function renderRoster(){
- const opponent=mode==='story'?match.fighters[1].form.id:selected[1];
- $('roster').innerHTML=FORMS.map((f,i)=>`<button class="fighter-card ${selected[0]===f.id?'p1':''} ${opponent===f.id?'p2':''}" data-form="${f.id}" data-han="${f.han}" style="--color:${f.color}" aria-label="Choose ${f.name} for ${selecting===0?'player one':mode==='local'?'player two':'CPU'}" aria-pressed="${selected[selecting]===f.id}"><span class="card-number">FORM / 0${i+1}</span><h3>${f.name}</h3><span class="card-trait">${f.trait}</span><div class="mini-stats"><span>POWER</span>${Array.from({length:5},(_,j)=>`<i class="${j>=f.stats[0]?'dim':''}"></i>`).join('')}</div><canvas class="card-sprite" width="112" height="112" aria-hidden="true"></canvas><span class="card-badges">${selected[0]===f.id?'<span>P1</span>':''}${opponent===f.id?`<span class="p2-badge">${match.bossBattle?'BOSS':mode==='local'?'P2':'CPU'}</span>`:''}</span></button>`).join('');
+ const opponent=mode==='online'?(online.status==='matched'?match.fighters[1-online.side].form.id:null):mode==='story'?match.fighters[1].form.id:selected[1];
+ $('roster').innerHTML=FORMS.map((f,i)=>`<button class="fighter-card ${selected[0]===f.id?'p1':''} ${opponent===f.id?'p2':''}" data-form="${f.id}" data-han="${f.han}" style="--color:${f.color}" aria-label="Choose ${f.name} for ${selecting===0?'player one':mode==='local'?'player two':'CPU'}" aria-pressed="${selected[selecting]===f.id}"><span class="card-number">FORM / 0${i+1}</span><h3>${f.name}</h3><span class="card-trait">${f.trait}</span><div class="mini-stats"><span>POWER</span>${Array.from({length:5},(_,j)=>`<i class="${j>=f.stats[0]?'dim':''}"></i>`).join('')}</div><canvas class="card-sprite" width="112" height="112" aria-hidden="true"></canvas><span class="card-badges">${selected[0]===f.id?`<span>${mode==='online'?'YOU':'P1'}</span>`:''}${opponent===f.id?`<span class="p2-badge">${match.bossBattle?'BOSS':mode==='online'?'RIVAL':mode==='local'?'P2':'CPU'}</span>`:''}</span></button>`).join('');
  document.querySelectorAll('.fighter-card').forEach(button=>{renderer.portrait(button.querySelector('canvas'),FORMS.find(f=>f.id===button.dataset.form));button.onclick=()=>choose(button.dataset.form);});
  const f=FORMS.find(f=>f.id===selected[selecting]),k=selecting===0?['F','G','H']:['J','K','L'];
  $('moveStrip').style.setProperty('--fighter',f.color);$('moveStrip').innerHTML=`<span class="form-name">${f.han} &nbsp; THE ${f.name.toUpperCase()} FORM</span><span><kbd>${k[0]}</kbd>${f.strike}</span><span><kbd>${k[1]}</kbd>${f.kick}</span><span><kbd>${k[2]}</kbd>${f.special}</span><span class="special-description">${f.specialText}</span>`;
 }
 function renderArenaOptions(){
  $('arenaOptions').innerHTML=ARENAS.map(a=>`<button class="arena-option" data-arena="${a.id}" style="--arena-color:${a.color}" aria-label="${a.name} — ${a.home?a.style+' home court, +1% movement speed':'neutral volcano, no speed bonus'}" aria-pressed="false"><canvas width="280" height="125" aria-hidden="true"></canvas><span class="arena-option-copy"><strong>${a.name}</strong><small></small></span></button>`).join('');
- document.querySelectorAll('.arena-option').forEach(button=>{renderer.arenaThumbnail(button.querySelector('canvas'),button.dataset.arena);button.onclick=()=>{if(mode==='story'||!['ready','over'].includes(match.phase))return;selectedArena=button.dataset.arena;audio('select');reset();};});
+ document.querySelectorAll('.arena-option').forEach(button=>{renderer.arenaThumbnail(button.querySelector('canvas'),button.dataset.arena);button.onclick=()=>{if(mode==='story'||mode==='online'||!['ready','over'].includes(match.phase))return;selectedArena=button.dataset.arena;audio('select');reset();};});
 }
 function updateArenaUI(){
- const arena=match.arena,story=mode==='story',locked=story||!['ready','over'].includes(match.phase);
+ const arena=match.arena,story=mode==='story',locked=story||mode==='online'||!['ready','over'].includes(match.phase);
  $('arenaName').textContent=ending?'THE TEMPLE · DAWN':arena.name.toUpperCase();$('arenaSymbol').textContent=arena.symbol;$('arenaSetting').textContent=arena.setting;
  document.body.classList.toggle('story-mode',story);$('storyBanner').hidden=!story;
- $('arenaSelectionTitle').textContent=story?'Your path to mastery':'Choose your ground';
+ $('arenaSelectionTitle').textContent=story?'Your path to mastery':mode==='online'?'Six courts. One shared arena.':'Choose your ground';
  if(story){$('storyChapter').textContent=`CHAPTER ${campaign.chapterIndex+1} / 6`;$('storyProgress').textContent=`${campaign.cleared.length} of 6 trials complete`;$('storyLesson').textContent=campaign.chapter.boss?'Final trial: the Fivefold Master':`The lesson of ${campaign.chapter.lesson.toLowerCase()}`;}
  for(const [i,button]of [...document.querySelectorAll('.arena-option')].entries()){
   const a=ARENAS[i];button.setAttribute('aria-pressed',a.id===arena.id);button.disabled=locked;button.classList.toggle('cleared',story&&campaign.cleared.includes(CHAPTERS[i].id));
   button.querySelector('small').textContent=story?`${campaign.cleared.includes(CHAPTERS[i].id)?'✓ CLEARED':String(i+1).padStart(2,'0')} · ${i===5?'FINAL BOSS':a.style.toUpperCase()}`:a.home?a.style.toUpperCase()+' HOME':'NEUTRAL VOLCANO';
  }
- $('arenaRule').textContent=story?'Defeat every home style. Face the master.':locked?'Arena locked · reset to change':'Home style gets +1% movement speed';
+ $('arenaRule').textContent=story?'Defeat every home style. Face the master.':mode==='online'?'Arena chosen automatically · home style +1% speed':locked?'Arena locked · reset to change':'Home style gets +1% movement speed';
  const bonus=match.bossBattle?'New form every 20% health lost. Final 20%: Golden Master, all five styles. +2% movement speed throughout.':arena.home?`${arena.style} fighters get +1% movement speed here.`:'Neutral ground. All five styles use their normal speed.';
  $('arenaDetail').innerHTML=`<span style="color:${arena.color}">${match.bossBattle?'FINAL TRIAL':arena.home?'HOME ADVANTAGE':'NEUTRAL GROUND'}</span> ${bonus}`;
- $('selectP2').disabled=story;$('opponentTab').textContent=match.bossBattle?'BOSS':mode==='local'?'P2':'CPU';
- $('reset').querySelector('span').textContent=story?'RESTART STORY':'RESET MATCH';
+ $('selectP2').disabled=story||mode==='online';$('opponentTab').textContent=match.bossBattle?'BOSS':mode==='online'?'RIVAL':mode==='local'?'P2':'CPU';
+ $('reset').querySelector('span').textContent=story?'RESTART STORY':mode==='online'?'LEAVE ONLINE':'RESET MATCH';
 }
 function choose(id){if(!canChooseFighter()){toast(mode==='story'?'Restart the story to choose a new fighter.':'Reset the match to change fighters.');return;}selected[selecting]=id;audio('select');reset();}
-function selectPlayer(i){if(mode==='story'&&i===1)return;selecting=i;for(const n of [0,1]){$(`selectP${n+1}`).classList.toggle('selected',n===i);$(`selectP${n+1}`).setAttribute('aria-pressed',n===i);}renderRoster();}
+function selectPlayer(i){if((mode==='story'||mode==='online')&&i===1)return;selecting=i;for(const n of [0,1]){$(`selectP${n+1}`).classList.toggle('selected',n===i);$(`selectP${n+1}`).setAttribute('aria-pressed',n===i);}renderRoster();}
 function setMode(next){
- if(mode===next)return;mode=next;ending=null;campaign=null;selecting=0;
- for(const id of ['story','cpu','local']){$(id+'Mode').classList.toggle('selected',mode===id);$(id+'Mode').setAttribute('aria-pressed',mode===id);}
- $('difficulty').disabled=mode==='local';reset();selectPlayer(0);if(mode==='local')toast('Two players · one keyboard. See All controls.');
+ if(mode===next)return;if(mode==='online'&&!['idle','error'].includes(online.status)){requestOnlineLeave(()=>setMode(next));return;}mode=next;document.querySelector('.fighter-hud .player-label').textContent='P1';$('selectP1').firstChild.textContent='P1 ';ending=null;campaign=null;selecting=0;
+ for(const id of ['story','cpu','local','online']){$(id+'Mode').classList.toggle('selected',mode===id);$(id+'Mode').setAttribute('aria-pressed',mode===id);}
+ $('difficulty').disabled=['local','online'].includes(mode);$('onlineBanner').hidden=mode!=='online';document.body.classList.toggle('online-mode',mode==='online');onlineScreen='';reset();selectPlayer(0);if(mode==='local')toast('Two players · one keyboard. See All controls.');
 }
 function prepareMatch(){keys={};accumulator=0;lastScreen='';announcementTime=0;renderer.particles=[];renderer.texts=[];renderer.transformPulse=0;renderRoster();updateArenaUI();updateUI();}
 function reset(startNow=false,keepRetry=false){
@@ -56,11 +59,11 @@ function reset(startNow=false,keepRetry=false){
  else match=new Match(...selected,mode,$('difficulty').value,Math.random,selectedArena);
  prepareMatch();if(startNow)start();
 }
-function start(){keys={};if(mode==='story')campaign.start();else if(match.phase==='ready')match.start();else reset(true);canvas.focus({preventScroll:true});audio('select');}
+function start(){if(mode==='online'){online.join(selected[0]);return;}keys={};if(mode==='story')campaign.start();else if(match.phase==='ready')match.start();else reset(true);canvas.focus({preventScroll:true});audio('select');}
 function nextChapter(){if(!campaign.advance())return;if(campaign.phase==='ending'){beginEnding();return;}match=campaign.match;prepareMatch();canvas.focus({preventScroll:true});}
 function retrySolo(){if(mode!=='cpu'||match.phase!=='over'||match.winner===0||soloRetries<=0)return;soloRetries--;reset(true,true);}
 function retryChapter(){if(!campaign.retry())return;match=campaign.match;prepareMatch();canvas.focus({preventScroll:true});}
-function togglePause(){keys={};if(ending){ending.paused=!ending.paused;updateUI();}else match.pause();canvas.focus({preventScroll:true});}
+function togglePause(){keys={};if(mode==='online'){toast('Online fights keep running. Use Leave online to forfeit.');return;}if(ending){ending.paused=!ending.paused;updateUI();}else match.pause();canvas.focus({preventScroll:true});}
 function setOverlay(html){$('overlayContent').innerHTML=html;}
 function renderStoryOverlay(){
  const chapter=campaign.chapter;
@@ -84,14 +87,14 @@ function updateHUD(){
   $(`p${n}Chi`).style.width=`${p.chi}%`;$(`p${n}Chi`).style.background=p.chi>=40?'#e9e6ae':'#9ca88b';$(`p${n}Health`).closest('.fighter-hud').style.setProperty('--fighter',p.form.color);
   $(`p${n}Lives`).innerHTML=p.isBoss?`<span class="boss-phase-count">${p.bossMixed?'ALL FIVE STYLES':`FORM ${p.bossPhase+1}/5`}</span>`:[0,1,2].map(j=>`<span class="${j>=p.lives?'lost':''}">◆</span>`).join(' ');
  }
- $('p2Label').textContent=match.bossBattle?'BOSS':mode==='local'?'P2':'CPU';
+ $('p2Label').textContent=match.bossBattle?'BOSS':mode==='online'?'RIVAL':mode==='local'?'P2':'CPU';
  $('round').textContent=mode==='story'?String(campaign.chapterIndex+1).padStart(2,'0'):match.phase==='ready'?'VS':String(match.round).padStart(2,'0');
  $('roundStatus').textContent=mode==='story'?'CHAPTER':match.phase==='ready'?'EXHIBITION':'EXCHANGE';$('roundRule').textContent=match.bossBattle?'FINAL TRIAL':mode==='cpu'?`${soloRetries} RETRY LEFT`:'THREE LIVES';
  $('bossForms').hidden=!match.bossBattle||['ready','over'].includes(match.phase)||!!ending;
  if(match.bossBattle){const boss=match.fighters[1];$('bossForms').innerHTML=BOSS_FORMS.map((id,i)=>`<span class="${i===boss.bossPhase?'current':i<boss.bossPhase?'passed':''}">${id==='mixed'?'武':FORMS.find(f=>f.id===id).han}<small>${100-i*20}%</small></span>`).join('');}
 }
 function updateUI(){
- updateHUD();$('pause').textContent=(ending?ending.paused:match.phase==='paused')?'▶':'Ⅱ';$('pause').setAttribute('aria-label',(ending?ending.paused:match.phase==='paused')?'Resume game':'Pause game');$('pause').disabled=!ending&&['ready','over'].includes(match.phase);
+ updateHUD();if(mode==='online'){updateOnlineUI();return;}$('pause').textContent=(ending?ending.paused:match.phase==='paused')?'▶':'Ⅱ';$('pause').setAttribute('aria-label',(ending?ending.paused:match.phase==='paused')?'Resume game':'Pause game');$('pause').disabled=!ending&&['ready','over'].includes(match.phase);
  if(ending){$('statusText').textContent=ending.paused?'Ending paused.':'Story complete. A true Shaolin master.';document.querySelector('.desktop-hint').textContent='';return;}
  const screen=`${mode}:${campaign?.chapterIndex}:${campaign?.phase}:${match.phase}`;
  if(screen!==lastScreen){
@@ -124,16 +127,16 @@ function loop(now){
  const dt=lastTime===null?0:Math.max(0,Math.min((now-lastTime)/1000,.06));lastTime=now;
  if(ending){if(!ending.paused&&!document.hidden&&!$('infoDialog').open){ending.time+=dt;ending.total+=dt;if(ending.time>=8&&ending.beat<ENDING.length-1)advanceEnding();}renderer.drawEnding(selected[0],ending.beat,ending.total);}
  else{
-  accumulator+=dt;while(accumulator>=1/60){if(mode==='story')campaign.update(1/60,controls(0));else match.update(1/60,[controls(0),controls(1)]);accumulator-=1/60;}
-  updateUI();for(const event of match.events.splice(0))handleEvent(event);
+  accumulator+=dt;while(accumulator>=1/60){if(mode==='online'){online.setInput(controls(0));online.predict(1/60);if(online.game&&online.status==='matched')match=online.game;}else if(mode==='story')campaign.update(1/60,controls(0));else match.update(1/60,[controls(0),controls(1)]);accumulator-=1/60;}
+  updateUI();for(const event of (mode==='online'?online.events:match.events).splice(0))handleEvent(event);
   if(announcementTime>0&&match.phase==='fight'){announcementTime-=dt;if(announcementTime<=0)$('announcement').textContent='';}
   renderer.draw(match,match.phase==='paused'?0:dt);
   if(mode==='story'&&campaign.phase==='won'&&campaign.chapter.boss){campaign.advance();beginEnding();updateArenaUI();}
  }
  updateUI();requestAnimationFrame(loop);
 }
-function openDialog(content){keys={};modalPaused=match.phase!=='paused'&&['fight','countdown','ko'].includes(match.phase);modalEndingPaused=!!ending&&!ending.paused;if(modalPaused)match.pause();if(ending)ending.paused=true;$('dialogContent').innerHTML=content;$('infoDialog').showModal();}
-function showControls(){openDialog(`<span class="modal-eyebrow">A MOMENT OF PRACTICE</span><h2>Learn the rhythm.</h2><div class="guide-grid">${[1,2].map(n=>`<article><h3>Player ${n}</h3>${[['Move',n===1?'A / D':'← / →'],['Jump',n===1?'W':'↑'],['Guard',n===1?'S':'↓'],['Strike',n===1?'F':'J'],['Kick',n===1?'G':'K'],['Special',n===1?'H':'L']].map(([a,k])=>`<div class="key-row"><span>${a}</span><kbd>${k}</kbd></div>`).join('')}</article>`).join('')}</div><ul class="rules-list"><li><strong>Story mode:</strong> defeat Snake, Tiger, Leopard, Dragon and Crane at their home courts, then face the Fivefold Master at the volcano. Each new chapter restores your three lives. Each fight allows one retry (two attempts total), with three lives per attempt. Use your retry without losing earlier victories; a second defeat ends the journey. VS CPU also allows only one retry per fight.</li><li><strong>Final boss:</strong> one continuous 300-health bar, five forms, and +2% movement speed. Forms change at 80%, 60% and 40% health. At 20%, the Golden Master mixes all five styles, changing techniques with each attack. The boss keeps its remaining health and form when you lose a life. Defeat it to unlock the ending.</li><li>In regular duels, each fighter begins with <strong>three lives</strong> and 100 health. A knockout costs one life. Both fighters return to full health for the next exchange.</li><li>Take all three opposing lives to win a regular duel; deplete the final boss’s single health bar to complete the story. There is no time limit.</li><li>Choose one of six arenas before the match. Your animal style receives exactly <strong>+1% movement speed</strong> on its home court, including special-move travel. The bonus applies equally to Player 1, Player 2 and the CPU. Both matching fighters benefit in a mirror match. The volcano is neutral ground.</li><li>Specials spend <strong>40 qi</strong>. Qi restores over time and when either fighter lands a hit. The qi bar glows when a special is available.</li><li>Hold Guard to reduce frontal damage. Jump to evade attacks. Holding an attack repeats it after recovery.</li><li>Press <kbd>Esc</kbd> to pause. The match also pauses when you switch away. On phones, touch controls operate Player 1; local two-player mode uses a shared keyboard.</li></ul><p>Tip: create space after your attack. Every style has a different reach, speed, and recovery window.</p>`);}
+function openDialog(content){keys={};if(mode==='online')online.setInput({});modalPaused=mode!=='online'&&match.phase!=='paused'&&['fight','countdown','ko'].includes(match.phase);modalEndingPaused=!!ending&&!ending.paused;if(modalPaused)match.pause();if(ending)ending.paused=true;$('dialogContent').innerHTML=content;$('infoDialog').showModal();}
+function showControls(){openDialog(`<span class="modal-eyebrow">A MOMENT OF PRACTICE</span><h2>Learn the rhythm.</h2><div class="guide-grid">${[1,2].map(n=>`<article><h3>Player ${n}</h3>${[['Move',n===1?'A / D':'← / →'],['Jump',n===1?'W':'↑'],['Guard',n===1?'S':'↓'],['Strike',n===1?'F':'J'],['Kick',n===1?'G':'K'],['Special',n===1?'H':'L']].map(([a,k])=>`<div class="key-row"><span>${a}</span><kbd>${k}</kbd></div>`).join('')}</article>`).join('')}</div><ul class="rules-list"><li><strong>Story mode:</strong> defeat Snake, Tiger, Leopard, Dragon and Crane at their home courts, then face the Fivefold Master at the volcano. Each new chapter restores your three lives. Each fight allows one retry (two attempts total), with three lives per attempt. Use your retry without losing earlier victories; a second defeat ends the journey. VS CPU also allows only one retry per fight.</li><li><strong>Final boss:</strong> one continuous 300-health bar, five forms, and +2% movement speed. Forms change at 80%, 60% and 40% health. At 20%, the Golden Master mixes all five styles, changing techniques with each attack. The boss keeps its remaining health and form when you lose a life. Defeat it to unlock the ending.</li><li>In regular duels, each fighter begins with <strong>three lives</strong> and 100 health. A knockout costs one life. Both fighters return to full health for the next exchange.</li><li>Take all three opposing lives to win a regular duel; deplete the final boss’s single health bar to complete the story. There is no time limit.</li><li>Choose one of six arenas before the match. Your animal style receives exactly <strong>+1% movement speed</strong> on its home court, including special-move travel. The bonus applies equally to Player 1, Player 2 and the CPU. Both matching fighters benefit in a mirror match. The volcano is neutral ground.</li><li>Specials spend <strong>40 qi</strong>. Qi restores over time and when either fighter lands a hit. The qi bar glows when a special is available.</li><li>Hold Guard to reduce frontal damage. Jump to evade attacks. Holding an attack repeats it after recovery.</li><li><strong>Online:</strong> choose your fighter and Find opponent. Two waiting humans are matched automatically. Both use WASD and F/G/H (or touch controls), whichever side they spawn on. Three lives each, a random arena, and the same +1% home advantage. Return within 10 seconds after a disconnect or forfeit. Both players must agree to a rematch. Online matches keep running when you open controls or change tabs.</li><li>In offline modes, press <kbd>Esc</kbd> to pause. The match also pauses when you switch away. On phones, touch controls operate Player 1; local two-player mode uses a shared keyboard.</li></ul><p>Tip: create space after your attack. Every style has a different reach, speed, and recovery window.</p>`);}
 function showStyles(){openDialog(`<span class="modal-eyebrow">THE ROOTS OF THE FIVE FORMS</span><h2>Tradition in motion.</h2><p>These five human martial artists draw on the animal traditions of Shaolin kung fu. Their traits are inspired by descriptions from Shaolin schools; the move names, balance and visual effects are original arcade interpretations. Traditions vary across lineages.</p>${FORMS.map(f=>`<article class="style-entry"><div style="color:${f.color}"><h3>${f.name}</h3><small>${f.han} / ${f.id.toUpperCase()}</small></div><div><p>${f.description}</p><p class="move-note">${f.special} — ${f.specialText}</p></div></article>`).join('')}<div class="source-links">Further reading from practicing schools:<br><a href="https://shaolin.org/answers/sp-issues/mark12-five-animals.html" target="_blank" rel="noopener noreferrer">Shaolin Wahnam · The Five Animals ↗</a><a href="https://shaolingreendragonkungfuassociation.com/the-5-animals/" target="_blank" rel="noopener noreferrer">Shaolin Green Dragon · Animal characteristics ↗</a></div>`);}
 
 function closeDialog(){if($('infoDialog').open)$('infoDialog').close();}
@@ -142,19 +145,80 @@ document.addEventListener('keydown',e=>{
  if(key==='escape'){e.preventDefault();togglePause();return;}
  if(ending){if((key==='enter'||key===' ')&&target===canvas){e.preventDefault();if(ending.beat<ENDING.length-1)advanceEnding();}return;}
  if(key==='enter'&&match.phase==='ready'&&target===canvas){e.preventDefault();start();return;}
- if(Object.values(bindings[0]).includes(key)||Object.values(bindings[1]).includes(key)){if(!['ready','over'].includes(match.phase))e.preventDefault();keys[key]=true;}
+ if(Object.values(bindings[0]).includes(key)||Object.values(bindings[1]).includes(key)){if(!['ready','over'].includes(match.phase))e.preventDefault();keys[key]=true;if(mode==='online')online.setInput(controls(0));}
 });
-document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
-function pauseForFocus(){keys={};if(ending)ending.paused=true;else if(['fight','countdown','ko'].includes(match.phase))match.pause();}
+document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;if(mode==='online')online.setInput(controls(0));});
+function pauseForFocus(){keys={};if(mode==='online'){online.setInput({});return;}if(ending)ending.paused=true;else if(['fight','countdown','ko'].includes(match.phase))match.pause();}
 window.addEventListener('blur',pauseForFocus);document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseForFocus();});
-for(const id of ['story','cpu','local'])$(id+'Mode').onclick=()=>setMode(id);
+for(const id of ['story','cpu','local','online'])$(id+'Mode').onclick=()=>setMode(id);
 $('selectP1').onclick=()=>selectPlayer(0);$('selectP2').onclick=()=>selectPlayer(1);
 $('difficulty').onchange=()=>{match.difficulty=$('difficulty').value;if(campaign)campaign.difficulty=$('difficulty').value;toast(`CPU level: ${$('difficulty').selectedOptions[0].textContent}`);};
-$('pause').onclick=togglePause;$('reset').onclick=()=>{reset();toast(mode==='story'?'A new story · choose your fighter.':'New match · three lives each.');};
+$('pause').onclick=togglePause;$('reset').onclick=()=>{if(mode==='online'){requestOnlineLeave();return;}reset();toast(mode==='story'?'A new story · choose your fighter.':'New match · three lives each.');};
 $('sound').onclick=()=>{soundOn=!soundOn;$('soundText').textContent=soundOn?'SOUND ON':'SOUND OFF';$('sound').setAttribute('aria-label',soundOn?'Turn sound off':'Turn sound on');$('sound').title=soundOn?'Turn sound off':'Turn sound on';audio('select');};
 $('fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await $('arena').requestFullscreen();}catch{toast('Fullscreen is unavailable in this browser.');}};
 $('stylesNav').onclick=showStyles;$('inspiration').onclick=showStyles;$('controlsNav').onclick=showControls;$('allControls').onclick=showControls;$('playNav').onclick=()=>$('arena').scrollIntoView({behavior:'smooth',block:'center'});$('closeDialog').onclick=closeDialog;
 $('infoDialog').addEventListener('click',e=>{if(e.target===$('infoDialog')){const r=$('infoDialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();}});
 $('infoDialog').addEventListener('close',()=>{keys={};if(modalPaused&&match.phase==='paused')match.pause();if(modalEndingPaused&&ending)ending.paused=false;modalPaused=false;modalEndingPaused=false;});
-document.querySelectorAll('[data-key]').forEach(button=>{button.addEventListener('pointerdown',e=>{e.preventDefault();button.setPointerCapture(e.pointerId);if(!ending)keys[button.dataset.key]=true;});for(const type of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(type,()=>{keys[button.dataset.key]=false;});});
+document.querySelectorAll('[data-key]').forEach(button=>{button.addEventListener('pointerdown',e=>{e.preventDefault();button.setPointerCapture(e.pointerId);if(!ending)keys[button.dataset.key]=true;if(mode==='online')online.setInput(controls(0));});for(const type of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(type,()=>{keys[button.dataset.key]=false;if(mode==='online')online.setInput(controls(0));});});
 renderArenaOptions();setMode('story');installShowcaseShortcut();requestAnimationFrame(loop);
+
+
+function onlineChanged(){
+ if(mode!=='online')return;
+ if(online.game){
+  match=online.game;selected[0]=match.fighters[online.side].form.id;
+  if(onlineMatchId!==online.matchId){onlineMatchId=online.matchId;prepareMatch();canvas.focus({preventScroll:true});}
+ }
+ updateUI();
+}
+function requestOnlineLeave(after){
+ const leave=async()=>{closeDialog();if(await online.leave()){onlineMatchId=null;reset();if(after)after();}};
+ if(online.status==='matched'&&online.authoritative?.phase!=='over'){
+  openDialog('<span class="modal-eyebrow">LEAVE THE COURTYARD</span><h2>Concede this fight?</h2><p>Your opponent will win. You can find a new opponent afterward.</p><button class="primary-button" id="confirmLeave">LEAVE MATCH</button><button class="secondary-button" id="keepFighting">KEEP FIGHTING</button>');
+  $('confirmLeave').onclick=leave;$('keepFighting').onclick=closeDialog;
+ }else leave();
+}
+function updateOnlineUI(){
+ const state=online.status,over=state==='matched'&&online.authoritative?.phase==='over';
+ const waiting=state==='matched'&&online.authoritative?.phase==='ready';
+ const signature=[state,over,waiting,online.reason,online.error,online.rematch?.join(),online.side].join(':');
+ $('pause').disabled=true;$('pause').title='Online matches cannot be paused';
+ document.querySelector('.desktop-hint').textContent='';
+ document.querySelector('.fighter-hud .player-label').textContent=state==='matched'?(online.side===0?'YOU':'RIVAL'):'YOU';
+ $('p2Label').textContent=state==='matched'?(online.side===1?'YOU':'RIVAL'):'RIVAL';
+ $('selectP1').firstChild.textContent='YOU ';
+ $('roundRule').textContent='THREE LIVES';
+ $('roundStatus').textContent=state==='matched'?'ONLINE DUEL':'ONLINE';
+ $('onlineConnection').textContent=state==='queued'?`${Math.max(0,Math.floor((Date.now()-(online.joined||Date.now()))/1000))}s waiting`:state==='matched'?(online.reconnecting?'RECONNECTING':`${Math.round(online.rtt||0)} ms · YOU ARE ${online.side===0?'LEFT':'RIGHT'}`):'HUMAN VS HUMAN';
+ const opponentAway=state==='matched'&&!over&&online.serverTime-online.seen?.[1-online.side]>1500;
+ const title=online.reconnecting?'Reconnecting…':opponentAway?'Opponent reconnecting…':state==='queued'?'Looking for another fighter…':state==='joining'?'Entering the queue…':state==='leaving'?'Leaving the courtyard…':over?'The duel is complete.':waiting?'Opponent found. Preparing the fight…':state==='matched'?'A human opponent. A shared courtyard.':state==='error'?'Unable to connect.':'Find your next rival.';
+ $('onlineTitle').textContent=title;$('statusText').textContent=title;
+ $('onlineDetail').textContent=online.reconnecting?'Return within 10 seconds to keep your place.':opponentAway?'Your opponent has 10 seconds to return.':state==='queued'?'Stay here. Your match starts automatically when another player joins.':state==='matched'?'WASD · F/G/H · Online matches keep running when you switch tabs.':'Choose a style below, then enter the queue. Sign in with ChatGPT to play online.';
+ $('stageHint').textContent='WASD + F/G/H · THREE LIVES · HOME +1%';
+ if(signature!==onlineScreen){
+  onlineScreen=signature;$('overlay').hidden=state==='matched'&&!over&&!waiting;
+  $('announcement').textContent='';
+  if(['idle','error'].includes(state)){
+   setOverlay('<span class="overline">ONLINE DUELS</span><h2>Across the world.<br>In one courtyard.</h2><p id="onlineError">Choose your style. We will find your opponent.</p><button class="primary-button" id="findOpponent">FIND OPPONENT <span>↗</span></button><small>3 LIVES EACH · AUTOMATIC MATCHMAKING</small>');
+   if(online.error)$('onlineError').textContent=online.error;
+   if(online.needsSignIn){$('findOpponent').outerHTML='<a class="primary-button" href="/signin-with-chatgpt?return_to=%2F%3Fmode%3Donline" target="_top">SIGN IN WITH CHATGPT ↗</a>';}else $('findOpponent').onclick=()=>online.join(selected[0]);
+  }else if(['queued','joining','leaving'].includes(state)){
+   setOverlay('<span class="overline">THE NEXT CHALLENGE</span><h2>Patience is a form.</h2><p>Waiting for another human to enter the courtyard.</p><div class="queue-pulse" aria-hidden="true"><i></i><i></i><i></i></div><button class="secondary-button" id="cancelQueue">CANCEL SEARCH</button>');
+   $('cancelQueue').disabled=state==='leaving';$('cancelQueue').onclick=()=>requestOnlineLeave();
+  }else if(waiting){
+   setOverlay('<span class="overline">A CHALLENGER ARRIVES</span><h2>Find your center.</h2><p>Both fighters are connecting. The countdown starts automatically.</p>');
+  }else if(over){
+   const winner=online.authoritative.winner,won=winner===online.side,draw=winner===-1;
+   setOverlay(`<span class="overline">${draw?'DRAW':won?'VICTORY':'DEFEAT'}</span><h2>${draw?'An even match.':won?'Your form prevails.':'Rise. Learn. Return.'}</h2><p>${online.reason==='forfeit'?'Your opponent conceded the fight.':online.reason==='disconnect'?'The reconnect window has ended.':online.reason==='not-ready'?'A fighter could not connect.':'Three lives. One shared lesson.'}</p>${!online.reason?'<button class="primary-button" id="onlineRematch">'+(online.rematch?.[online.side]?'WAITING FOR REMATCH':'REQUEST REMATCH')+'</button>':''}<button class="secondary-button" id="findAnother">FIND ANOTHER OPPONENT</button>`);
+   if($('onlineRematch')){$('onlineRematch').disabled=online.rematch?.[online.side];$('onlineRematch').onclick=()=>online.requestRematch();}
+   $('findAnother').onclick=async()=>{if(await online.leave())online.join(selected[0]);};
+  }
+  renderRoster();updateArenaUI();
+ }
+ if(state==='matched'&&!over&&!waiting){
+  if(match.phase==='countdown')$('announcement').innerHTML=`<small>EXCHANGE ${match.round}</small>${Math.max(1,Math.ceil(match.timer))}`;
+  if(match.phase==='ko')$('announcement').innerHTML='<small>A LIFE HAS FALLEN</small>K.O.';
+ }
+}
+if(new URLSearchParams(location.search).get('mode')==='online')setMode('online');
+if(sessionStorage.getItem('five-forms-online')){setMode('online');online.resume();}
