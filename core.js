@@ -1,4 +1,5 @@
 import {getArena, HOME_SPEED_MULTIPLIER} from './arena-data.js';
+import {BOSS_FORMS,BOSS_MIX_STYLES,BOSS_MAX_HEALTH,BOSS_SPEED_MULTIPLIER,bossPhaseForHealth} from './story-data.js';
 export const W=1120,H=500,FLOOR=414;
 export const FORMS=[
  {id:'snake',name:'Snake',han:'蛇',role:'The precision fighter',trait:'Precision · Fluidity',color:'#9bc7a2',dark:'#3c6555',light:'#d4e5b4',speed:235,power:0.95,reach:100,jump:560,stats:[3,4,5],special:'Serpent’s Reach',specialText:'A swift, long-reaching palm lunge.',strike:'Spear palm',kick:'Low sweep',description:'Fluid, direct palm techniques inspire a patient fighter who controls distance and strikes through an opening.',specialDamage:22},
@@ -8,12 +9,18 @@ export const FORMS=[
  {id:'crane',name:'Crane',han:'鹤',role:'The graceful counter-fighter',trait:'Balance · Reach',color:'#b7d1dd',dark:'#667c91',light:'#eff2e5',speed:225,power:0.94,reach:117,jump:630,stats:[2,4,5],special:'Crane Ascends',specialText:'An airborne, long-reaching wing kick.',strike:'Crane beak',kick:'Wing kick',description:'Balanced postures, extended arms and elegant kicks inspire a light-footed fighter with exceptional reach and height.',specialDamage:23}
 ];
 export class Fighter{
- constructor(form,x,side){this.form=FORMS.find(f=>f.id===form)||FORMS[1];this.side=side;this.x=x;this.y=FLOOR;this.vx=0;this.vy=0;this.facing=side===0?1:-1;this.hp=100;this.lives=3;this.chi=60;this.attack=null;this.cooldown=0;this.stun=0;this.invulnerable=0;this.block=false;this.walk=0;this.combo=0;this.comboTimer=0;this.specialCooldown=0;}
+ constructor(form,x,side){this.form=FORMS.find(f=>f.id===form)||FORMS[1];this.side=side;this.x=x;this.y=FLOOR;this.vx=0;this.vy=0;this.facing=side===0?1:-1;this.maxHp=100;this.hp=100;this.lives=3;this.isBoss=false;this.bossPhase=0;this.bossMixed=false;this.mixedMoveIndex=0;this.chi=60;this.attack=null;this.cooldown=0;this.stun=0;this.invulnerable=0;this.block=false;this.walk=0;this.combo=0;this.comboTimer=0;this.specialCooldown=0;}
  get airborne(){return this.y<FLOOR-2;}
 }
 export class Match{
- constructor(a='tiger',b='dragon',mode='cpu',difficulty='normal',random=Math.random,arena='volcano'){this.arena=getArena(arena);this.mode=mode;this.difficulty=difficulty;this.random=random;this.fighters=[new Fighter(a,310,0),new Fighter(b,810,1)];this.phase='ready';this.timer=0;this.round=1;this.events=[];this.winner=null;this.aiTimer=0;this.aiAction={};this.elapsed=0;}
- movementMultiplier(p){return this.arena.home===p.form.id?HOME_SPEED_MULTIPLIER:1;}
+ constructor(a='tiger',b='dragon',mode='cpu',difficulty='normal',random=Math.random,arena='volcano',options={}){this.bossBattle=!!options.boss;this.arena=getArena(arena);this.mode=mode;this.difficulty=difficulty;this.random=random;this.fighters=[new Fighter(a,310,0),new Fighter(b,810,1)];this.phase='ready';this.timer=0;this.round=1;this.events=[];this.winner=null;this.aiTimer=0;this.aiAction={};this.elapsed=0;if(this.bossBattle){const boss=this.fighters[1];boss.isBoss=true;boss.maxHp=BOSS_MAX_HEALTH;boss.hp=boss.maxHp;boss.lives=1;boss.form=FORMS.find(f=>f.id===BOSS_FORMS[0]);}}
+ movementMultiplier(p){if(p.isBoss)return BOSS_SPEED_MULTIPLIER;return this.arena.home===p.form.id?HOME_SPEED_MULTIPLIER:1;}
+ syncBossForm(p){
+  if(!p.isBoss||p.hp<=0)return;
+  const phase=bossPhaseForHealth(p.hp,p.maxHp);if(phase<=p.bossPhase)return;
+  p.bossPhase=phase;p.bossMixed=phase===4;p.mixedMoveIndex=0;p.form=FORMS.find(f=>f.id===(p.bossMixed?BOSS_MIX_STYLES[0]:BOSS_FORMS[phase]));p.attack=null;p.block=false;p.cooldown=Math.max(p.cooldown,.45);p.invulnerable=.35;this.aiTimer=0;this.aiAction={};
+  this.events.push({type:'transform',form:p.bossMixed?'mixed':p.form.id,name:p.bossMixed?'Golden Master':p.form.name,color:p.bossMixed?'#e4ce97':p.form.color,x:p.x,y:p.y,phase});
+ }
  start(){this.phase='countdown';this.timer=2.4;this.events.push({type:'start'});}
  command(p,input,dt){
   if(p.stun>0)return;
@@ -27,6 +34,8 @@ export class Match{
  beginAttack(p,type){
   if(p.cooldown>0||p.stun>0||p.attack)return false;
   if(type==='special'&&(p.chi<40||p.specialCooldown>0))return false;
+  // In the final phase, every accepted attack advances through all five disciplines.
+  if(p.bossMixed){p.form=FORMS.find(f=>f.id===BOSS_MIX_STYLES[p.mixedMoveIndex%BOSS_MIX_STYLES.length]);p.mixedMoveIndex++;}
   const special=type==='special';
   const duration=special?0.60:type==='kick'?0.43:0.29;
   p.attack={type,time:0,duration,hits:new Set(),facing:p.facing};p.cooldown=duration+(type==='strike'?0.1:0.18);
@@ -57,6 +66,7 @@ export class Match{
   const controls=[inputs[0]||{},this.mode==='cpu'?this.ai(dt):inputs[1]||{}];
   for(let i=0;i<2;i++){
    const p=this.fighters[i],other=this.fighters[1-i];
+   this.syncBossForm(p);
    p.facing=other.x>=p.x?1:-1;p.cooldown=Math.max(0,p.cooldown-dt);p.specialCooldown=Math.max(0,p.specialCooldown-dt);p.stun=Math.max(0,p.stun-dt);p.invulnerable=Math.max(0,p.invulnerable-dt);p.comboTimer-=dt;if(p.comboTimer<=0)p.combo=0;p.chi=Math.min(100,p.chi+dt*6.5);
    this.command(p,controls[i],dt);
    p.x+=p.vx*dt;p.vx*=Math.pow(0.005,dt);p.vy+=1450*dt;p.y+=p.vy*dt;
@@ -88,7 +98,8 @@ export class Match{
   if(!blocked){other.attack=null;p.combo++;p.comboTimer=1.2;}
   p.chi=Math.min(100,p.chi+(blocked?2:5));other.chi=Math.min(100,other.chi+4);
   this.events.push({type:blocked?'block':'hit',x:(p.x+other.x)/2,y:other.y-80,color:p.form.color,damage,side:p.side,special,combo:p.combo});
+  this.syncBossForm(other);
  }
- resetRound(){this.round++;for(const [i,p]of this.fighters.entries()){p.hp=100;p.x=i===0?310:810;p.y=FLOOR;p.vx=0;p.vy=0;p.attack=null;p.cooldown=0;p.stun=0;p.block=false;p.chi=Math.max(40,p.chi);p.combo=0;}this.phase='countdown';this.timer=2;this.aiAction={};}
+ resetRound(){this.round++;for(const [i,p]of this.fighters.entries()){if(!p.isBoss)p.hp=p.maxHp;p.x=i===0?310:810;p.facing=i===0?1:-1;p.y=FLOOR;p.vx=0;p.vy=0;p.attack=null;p.cooldown=0;p.stun=0;p.invulnerable=0;p.block=false;p.chi=Math.max(40,p.chi);p.combo=0;}this.phase='countdown';this.timer=2;this.aiAction={};}
  pause(){if(this.phase==='paused'){this.phase=this.previousPhase;return;}if(['fight','countdown','ko'].includes(this.phase)){this.previousPhase=this.phase;this.phase='paused';}}
 }

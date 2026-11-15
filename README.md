@@ -12,6 +12,10 @@ python3 -m http.server 4173
 
 Open http://localhost:4173. No build step or package installation is required. A modern browser with Canvas and ES module support is needed. The optional web fonts load from Google Fonts; system fallbacks work without them.
 
+## Boss showcase
+
+Open `boss-demo.html` and press **Watch the fight** to run a replayable, roughly one-minute scripted exhibition. It uses the real combat renderer, attacks and transformation rules, with a timed health bar that guarantees every boss appearance and the full ending are shown. Pause or replay it at any time. In the game, double-tap Ctrl within 650 milliseconds to reveal the glowing top-right ✦ button, then click it to launch the showcase automatically. The button is hidden until the shortcut is used; ordinary Ctrl key combinations do not reveal it. The main game continues to use normal combat damage.
+
 ## Controls
 
 | Action | Player 1 | Player 2 |
@@ -24,7 +28,25 @@ Open http://localhost:4173. No build step or package installation is required. A
 | Special | H | L |
 | Pause | Escape | Escape |
 
-Use VS CPU for solo play, or 2 PLAYERS for a shared-keyboard duel. Select the P1 or CPU/P2 tab above the roster to change that fighter. Each fighter begins with three lives and 100 health. A knockout removes one life; health resets for the next exchange. The first fighter to lose all three lives loses the match. Specials cost 40 qi, with regeneration and a short cooldown. Touch controls operate Player 1 on small screens. Two-player mode requires a shared keyboard.
+Choose STORY for the campaign, VS CPU for an exhibition, or 2 PLAYERS for a shared-keyboard duel. Select the P1 or CPU/P2 tab above the roster to change that fighter. Each fighter begins with three lives and 100 health. A knockout removes one life; health resets for the next exchange. The first fighter to lose all three lives loses a regular match. Each solo fight allows **one retry (two attempts total)**, with three lives per attempt. Fighters face each other at the start of every exchange. Specials cost 40 qi, with regeneration and a short cooldown. Touch controls operate Player 1 on small screens. Two-player mode requires a shared keyboard.
+
+## Story: the path to mastery
+
+Choose one fighter for the whole journey. Defeat Snake, Tiger, Leopard, Dragon and Crane in that order on their own home courts. Each new chapter restores three lives and grants one retry. A retry preserves earlier victories; losing the second attempt ends the journey and requires a new story. Campaign progress lasts for the current browser session and is reset by reloading the page.
+
+The sixth trial takes place at the neutral volcano against **The Fivefold Master**. The boss has one continuous 300-HP bar and exactly **+2% horizontal movement and special-dash speed** relative to its active style. Its remaining health and form persist when the player loses a life.
+
+| Boss health remaining | Appearance and techniques |
+| --- | --- |
+| Above 80% | Snake |
+| 80% down to above 60% | Tiger |
+| 60% down to above 40% | Leopard |
+| 40% down to above 20% | Dragon |
+| 20% or below | Golden Master: golden clothing and armor; cycles Snake, Tiger, Leopard, Dragon and Crane techniques with each accepted attack |
+
+The boss transforms at 240, 180, 120 and 60 HP, with a short visual burst and recovery. Attack timing and damage retain the active style's normal values; the speed bonus never stacks with a home bonus.
+
+Defeat the boss to unlock a three-part animated ceremony about overcoming all five styles and becoming a true Shaolin master. Continue manually, let the scenes advance, skip to the epilogue, or replay the ending. Escape also pauses the cutscene.
 
 ## The fighters
 
@@ -56,19 +78,26 @@ Choose an arena above the match before starting. The selected ground stays fixed
 | Moonwater Pavilion | Crane | Moonlit water, white cranes and a lakeside pavilion |
 | Cinder Caldera | None | A smoking volcano, lava and a basalt platform |
 
-The matching style receives exactly **1% more horizontal movement speed** (a 1.01 multiplier), including guarded movement, air control and special-move travel. It applies equally to either local player and the CPU; both matching fighters receive it in a mirror match. It does not stack after knockouts. The volcano grants no bonus. Attack timing, damage, jump impulse and health are unaffected.
+The matching style receives exactly **1% more horizontal movement speed** (a 1.01 multiplier), including guarded movement, air control and special-move travel. It applies equally to either local player and the CPU; both matching fighters receive it in a mirror match. It does not stack after knockouts. The volcano grants no home bonus; the story boss has its separate 2% bonus. Attack timing, damage, jump impulse and health are unaffected.
+
+Each background has animated elemental scenery: drifting air and mist, water ripples and rain, fire and lava, and moving dust, stone and roots. The snake flicks its tongue, tiger guardians blink and sway their tails, the leopard breathes and moves its tail, the dragon's whiskers move, and cranes wade and flap. Animation shares the game clock, freezes on pause, and respects reduced-motion preferences.
 
 The original game-building requests are recorded in [PROMPTS.md](PROMPTS.md).
 
 ## Development
 
 - `core.js`: deterministic simulation, hit detection, life rules and CPU decisions.
-- `render.js`: generated humanoid sprite frames, arena thumbnails and combat effects.
+- `render.js`: generated humanoid sprite frames, Golden Master variants, combat effects and ending animation.
+- `story.js` / `story-data.js`: campaign progression, retry allowance, boss phases and ending script.
+- `arena-motion.js`: elemental and animal animation layered over cached scenery.
 - `arena-data.js`: the six arenas and exact home-speed multiplier.
 - `arenas.js`: six original pixel-art backgrounds.
 - `app.js`: input, UI, synthesized audio and the fixed-step game loop.
 - `style.css`: responsive interface.
 - `core.test.mjs`: automated combat and match-flow checks.
+- `story.test.mjs`: six-trial progression, retry cap, facing resets, boss thresholds, mixed techniques and ending gates.
+- `shortcut.test.mjs`: double-Ctrl reveal, timeout, modifier combinations and repeated keys.
+- `animation.test.mjs`: animated scenery and animals in every arena, plus reduced-motion behavior.
 - `arenas.test.mjs`: neutral ground, all home/away combinations, CPU parity, mirror matches, dash movement and bonus persistence.
 
 With Node.js 18 or newer:
@@ -77,4 +106,4 @@ With Node.js 18 or newer:
 node --test *.test.mjs
 ```
 
-Verified: 19 simulation tests covering combat, life rules, match flow and home-court bonuses. Browser checks covered all six scenes, arena selection and locking, home badges for both sides, neutral-ground status and the phone layout.
+Verified: 40 automated tests covering combat, life rules, facing resets, home bonuses, story progression, retry limits, boss transformations, mixed techniques and animated scenery. Browser checks cover the full six-trial journey, loss/retry flows in both solo modes, all boss appearances, the ending and the phone layout. Local QA controls used to reach late-game states are excluded from release files.
