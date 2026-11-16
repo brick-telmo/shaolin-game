@@ -75,13 +75,14 @@ The sixth trial takes place at the neutral volcano against **The Fivefold Master
 
 | Boss health remaining | Appearance and techniques |
 | --- | --- |
-| Above 80% | Snake |
-| 80% down to above 60% | Tiger |
-| 60% down to above 40% | Leopard |
-| 40% down to above 20% | Dragon |
-| 20% or below | Golden Master: golden clothing and armor; cycles Snake, Tiger, Leopard, Dragon and Crane techniques with each accepted attack |
+| Above 90% | Snake |
+| 90% down to above 80% | Tiger |
+| 80% down to above 70% | Leopard |
+| 70% down to above 60% | Dragon |
+| 60% down to above 50% | Crane |
+| 50% or below | Golden Master: golden clothing and armor; cycles Snake, Tiger, Leopard, Dragon and Crane techniques with each accepted attack |
 
-The boss transforms at 240, 180, 120 and 60 HP, with a short visual burst and recovery. Attack timing and damage retain the active style's normal values; the speed bonus never stacks with a home bonus.
+The boss transforms at 270, 240, 210, 180 and 150 HP, with a short visual burst and recovery. Every 30% of boss health lost cracks a different 64-pixel section of floor: at 70%, 40% and 10% remaining (210, 120 and 30 HP). Each opens a permanent gap after a 0.9-second warning, for three gaps total. Floor damage continues independently during the Golden Master phase. Use W with A/D to jump over the holes. Falling costs 20% of each fighter’s maximum health (20 HP for the player, 60 HP for the boss) and returns them to a nearby safe ledge with brief protection; a fatal fall uses the normal knockout rules. The boss also jumps over gaps. Broken floor persists across lost lives and is repaired when the fight is retried. The Golden Master keeps its golden appearance for the final 50%; changing attack techniques does not break more floor. Attack timing and damage retain the active style's normal values; the speed bonus never stacks with a home bonus.
 
 Defeat the boss to unlock a three-part animated ceremony about overcoming all five styles and becoming a true Shaolin master. Continue manually, let the scenes advance, skip to the epilogue, or replay the ending. Escape also pauses the cutscene.
 
@@ -127,6 +128,7 @@ The original game-building requests are recorded in [PROMPTS.md](PROMPTS.md).
 - `render.js`: generated humanoid sprite frames, Golden Master variants, combat effects and ending animation.
 - `story.js` / `story-data.js`: campaign progression, retry allowance, boss phases and ending script.
 - `arena-motion.js`: elemental and animal animation layered over cached scenery.
+- `boss-floor.js`: final-boss floor gaps, warning timing, fall damage and rendering.
 - `arena-data.js`: the six arenas and exact home-speed multiplier.
 - `arenas.js`: six original pixel-art backgrounds.
 - `app.js`: input, UI, synthesized audio and the fixed-step game loop.
