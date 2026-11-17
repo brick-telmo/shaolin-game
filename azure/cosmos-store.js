@@ -64,11 +64,29 @@ export class CosmosStore {
     for (let attempt = 0; attempt < RETRIES; attempt++) {
       const room = await this.read(id);
       if (!room) return null;
-      const value = change(room);
+      const {value, winner} = change(room);
       try {
-        await this.container.item(id, PARTITION).replace(room, {
-          accessCondition: {type: 'IfMatch', condition: room._etag}
-        });
+        if (winner) {
+          const account = await this.read(winner);
+          if (!account || account.kind !== 'account') throw new Error('Winning account not found.');
+          account.victories++;
+          const operations = [
+            {operationType: 'Replace', id, resourceBody: room, ifMatch: room._etag},
+            {operationType: 'Replace', id: winner, resourceBody: account, ifMatch: account._etag}
+          ];
+          const response = await this.container.items.batch(operations, PARTITION);
+          const results = response.result;
+          if (response.code === 412 || response.code === 409 ||
+              results?.some(result => result.statusCode === 412 || result.statusCode === 409)) continue;
+          if (!Array.isArray(results) || results.length !== operations.length ||
+              response.code < 200 || response.code >= 300 ||
+              results.some(result => result.statusCode < 200 || result.statusCode >= 300))
+            throw new Error('Victory transaction failed.');
+        } else {
+          await this.container.item(id, PARTITION).replace(room, {
+            accessCondition: {type: 'IfMatch', condition: room._etag}
+          });
+        }
         return value;
       } catch (error) {
         if (error.code === 412) continue;

@@ -89,9 +89,12 @@ export class AzureMatchmakingService extends MatchmakingService {
     const result = await this.store.updateRoom(id, row => {
       if (![row.p0, row.p1].includes(user)) throw new ApiError(404, 'This match is no longer available.');
       const state = JSON.parse(row.state), side = row.p0 === user ? 0 : 1, now = this.now();
+      const wasOver = state.game.phase === 'over';
       change(state, side, now);
       row.state = JSON.stringify(state); row.version++; row.updated = now;
-      return this.snapshot(row, user);
+      const winner = !wasOver && state.started && state.game.phase === 'over' &&
+        state.game.winner >= 0 ? [row.p0, row.p1][state.game.winner] : null;
+      return {value: this.snapshot(row, user), winner};
     });
     if (!result) throw new ApiError(404, 'This match is no longer available.');
     return result;

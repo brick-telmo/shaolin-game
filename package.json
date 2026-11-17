@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@azure/cosmos": "^4.10.2",
-    "@azure/functions": "^4.17.1"
+    "@azure/functions": "^4.17.1",
+    "@azure/msal-node": "^7.2.2",
+    "nodemailer": "^10.6.0"
   },
   "devDependencies": {
     "esbuild": "^0.25.12",

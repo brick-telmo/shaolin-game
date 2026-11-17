@@ -22,7 +22,7 @@ await build({
   entryPoints: [fileURLToPath(new URL('function.js', import.meta.url))],
   outfile: fileURLToPath(new URL('index.js', api)),
   bundle: true, platform: 'node', format: 'esm', target: 'node22',
-  external: ['@azure/functions', '@azure/cosmos']
+  external: ['@azure/functions', '@azure/cosmos', '@azure/msal-node']
 });
 const rootPackage = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 await writeFile(new URL('package.json', api), JSON.stringify({

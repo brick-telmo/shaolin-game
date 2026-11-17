@@ -1,5 +1,6 @@
 import {FORMS,Match} from './core.js';
 import {OnlineClient} from './online-client.js';
+import {AccountClient} from './account-client.js';
 import {Renderer} from './render.js';
 import {ARENAS} from './arena-data.js';
 import {StoryCampaign} from './story.js';
@@ -15,6 +16,7 @@ function toast(message){$('toast').textContent=message;$('toast').classList.add(
 function audio(type){if(!soundOn)return;try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();osc.connect(gain);gain.connect(audioCtx.destination);const now=audioCtx.currentTime;const config={hit:[150,45,.13,'sawtooth'],block:[340,130,.1,'triangle'],attack:[170,80,.07,'triangle'],jump:[210,380,.12,'sine'],start:[330,660,.23,'sine'],fight:[440,880,.2,'triangle'],ko:[220,55,.5,'triangle'],over:[330,660,.7,'sine'],select:[440,550,.07,'sine']}[type];if(!config)return;osc.type=config[3];osc.frequency.setValueAtTime(config[0],now);osc.frequency.exponentialRampToValueAtTime(config[1],now+config[2]);gain.gain.setValueAtTime(type==='hit'?.055:.035,now);gain.gain.exponentialRampToValueAtTime(.001,now+config[2]);osc.start(now);osc.stop(now+config[2]);}catch{soundOn=false;$('soundText').textContent='SOUND OFF';}}
 
 const online=new OnlineClient(onlineChanged);
+const account=document.documentElement.dataset.authProvider==='azure'?new AccountClient(()=>{online.needsSignIn=!account.username;onlineScreen='';if(mode==='online')updateOnlineUI();}):null;
 let onlineScreen='',onlineMatchId=null;
 function canChooseFighter(){if(mode==='online')return ['idle','error'].includes(online.status);return mode==='story'?campaign.chapterIndex===0&&!campaign.started:['ready','over'].includes(match.phase);}
 function renderRoster(){
@@ -50,6 +52,7 @@ function setMode(next){
  if(mode===next)return;if(mode==='online'&&!['idle','error'].includes(online.status)){requestOnlineLeave(()=>setMode(next));return;}mode=next;document.querySelector('.fighter-hud .player-label').textContent='P1';$('selectP1').firstChild.textContent='P1 ';ending=null;campaign=null;selecting=0;
  for(const id of ['story','cpu','local','online']){$(id+'Mode').classList.toggle('selected',mode===id);$(id+'Mode').setAttribute('aria-pressed',mode===id);}
  $('difficulty').disabled=['local','online'].includes(mode);$('onlineBanner').hidden=mode!=='online';document.body.classList.toggle('online-mode',mode==='online');onlineScreen='';reset();selectPlayer(0);if(mode==='local')toast('Two players · one keyboard. See All controls.');
+ $('accountArea').hidden=mode!=='online'||!account;if(mode==='online'&&account){account.refresh();account.scores();}
 }
 function prepareMatch(){keys={};accumulator=0;lastScreen='';announcementTime=0;renderer.particles=[];renderer.texts=[];renderer.transformPulse=0;renderRoster();updateArenaUI();updateUI();}
 function reset(startNow=false,keepRetry=false){
@@ -141,7 +144,7 @@ function showStyles(){openDialog(`<span class="modal-eyebrow">THE ROOTS OF THE F
 
 function closeDialog(){if($('infoDialog').open)$('infoDialog').close();}
 document.addEventListener('keydown',e=>{
- if($('infoDialog').open)return;const key=e.key.toLowerCase(),target=e.target;if(['INPUT','SELECT','TEXTAREA'].includes(target.tagName))return;
+ if($('infoDialog').open||$('accountDialog').open)return;const key=e.key.toLowerCase(),target=e.target;if(['INPUT','SELECT','TEXTAREA'].includes(target.tagName))return;
  if(key==='escape'){e.preventDefault();togglePause();return;}
  if(ending){if((key==='enter'||key===' ')&&target===canvas){e.preventDefault();if(ending.beat<ENDING.length-1)advanceEnding();}return;}
  if(key==='enter'&&match.phase==='ready'&&target===canvas){e.preventDefault();start();return;}
@@ -181,6 +184,7 @@ function requestOnlineLeave(after){
 function updateOnlineUI(){
  const state=online.status,over=state==='matched'&&online.authoritative?.phase==='over';
  const waiting=state==='matched'&&online.authoritative?.phase==='ready';
+ if(account){$('signOut').disabled=!['idle','error'].includes(state);$('signOut').title=$('signOut').disabled?'Leave the queue or match before signing out.':'';}
  const signature=[state,over,waiting,online.reason,online.error,online.rematch?.join(),online.side].join(':');
  $('pause').disabled=true;$('pause').title='Online matches cannot be paused';
  document.querySelector('.desktop-hint').textContent='';
@@ -193,7 +197,7 @@ function updateOnlineUI(){
  const opponentAway=state==='matched'&&!over&&online.serverTime-online.seen?.[1-online.side]>1500;
  const title=online.reconnecting?'Reconnecting…':opponentAway?'Opponent reconnecting…':state==='queued'?'Looking for another fighter…':state==='joining'?'Entering the queue…':state==='leaving'?'Leaving the courtyard…':over?'The duel is complete.':waiting?'Opponent found. Preparing the fight…':state==='matched'?'A human opponent. A shared courtyard.':state==='error'?'Unable to connect.':'Find your next rival.';
  $('onlineTitle').textContent=title;$('statusText').textContent=title;
- $('onlineDetail').textContent=online.reconnecting?'Return within 10 seconds to keep your place.':opponentAway?'Your opponent has 10 seconds to return.':state==='queued'?'Stay here. Your match starts automatically when another player joins.':state==='matched'?'WASD · F/G/H · Online matches keep running when you switch tabs.':document.documentElement.dataset.authProvider==='azure'?'Choose a style below, then enter the queue. Sign in with Microsoft or GitHub to play online.':'Choose a style below, then enter the queue. Sign in with ChatGPT to play online.';
+ $('onlineDetail').textContent=online.reconnecting?'Return within 10 seconds to keep your place.':opponentAway?'Your opponent has 10 seconds to return.':state==='queued'?'Stay here. Your match starts automatically when another player joins.':state==='matched'?'WASD · F/G/H · Online matches keep running when you switch tabs.':account?'Choose a style below, then sign in to play online.':'Choose a style below, then enter the queue. Sign in with ChatGPT to play online.';
  $('stageHint').textContent='WASD + F/G/H · THREE LIVES · HOME +1%';
  if(signature!==onlineScreen){
   onlineScreen=signature;$('overlay').hidden=state==='matched'&&!over&&!waiting;
@@ -201,13 +205,14 @@ function updateOnlineUI(){
   if(['idle','error'].includes(state)){
    setOverlay('<span class="overline">ONLINE DUELS</span><h2>Across the world.<br>In one courtyard.</h2><p id="onlineError">Choose your style. We will find your opponent.</p><button class="primary-button" id="findOpponent">FIND OPPONENT <span>↗</span></button><small>3 LIVES EACH · AUTOMATIC MATCHMAKING</small>');
    if(online.error)$('onlineError').textContent=online.error;
-   if(online.needsSignIn){$('findOpponent').outerHTML=document.documentElement.dataset.authProvider==='azure'?'<a class="primary-button" href="/.auth/login/aad">SIGN IN WITH MICROSOFT ↗</a> <a class="secondary-button" href="/.auth/login/github">SIGN IN WITH GITHUB ↗</a>':'<a class="primary-button" href="/signin-with-chatgpt?return_to=%2F%3Fmode%3Donline" target="_top">SIGN IN WITH CHATGPT ↗</a>';}else $('findOpponent').onclick=()=>online.join(selected[0]);
+   if(online.needsSignIn){if(account){$('findOpponent').textContent='SIGN IN / CREATE ACCOUNT';$('findOpponent').onclick=()=>account.show();}else $('findOpponent').outerHTML='<a class="primary-button" href="/signin-with-chatgpt?return_to=%2F%3Fmode%3Donline" target="_top">SIGN IN WITH CHATGPT ↗</a>';}else $('findOpponent').onclick=()=>online.join(selected[0]);
   }else if(['queued','joining','leaving'].includes(state)){
    setOverlay('<span class="overline">THE NEXT CHALLENGE</span><h2>Patience is a form.</h2><p>Waiting for another human to enter the courtyard.</p><div class="queue-pulse" aria-hidden="true"><i></i><i></i><i></i></div><button class="secondary-button" id="cancelQueue">CANCEL SEARCH</button>');
    $('cancelQueue').disabled=state==='leaving';$('cancelQueue').onclick=()=>requestOnlineLeave();
   }else if(waiting){
    setOverlay('<span class="overline">A CHALLENGER ARRIVES</span><h2>Find your center.</h2><p>Both fighters are connecting. The countdown starts automatically.</p>');
   }else if(over){
+   if(account)account.scores();
    const winner=online.authoritative.winner,won=winner===online.side,draw=winner===-1;
    setOverlay(`<span class="overline">${draw?'DRAW':won?'VICTORY':'DEFEAT'}</span><h2>${draw?'An even match.':won?'Your form prevails.':'Rise. Learn. Return.'}</h2><p>${online.reason==='forfeit'?'Your opponent conceded the fight.':online.reason==='disconnect'?'The reconnect window has ended.':online.reason==='not-ready'?'A fighter could not connect.':'Three lives. One shared lesson.'}</p>${!online.reason?'<button class="primary-button" id="onlineRematch">'+(online.rematch?.[online.side]?'WAITING FOR REMATCH':'REQUEST REMATCH')+'</button>':''}<button class="secondary-button" id="findAnother">FIND ANOTHER OPPONENT</button>`);
    if($('onlineRematch')){$('onlineRematch').disabled=online.rematch?.[online.side];$('onlineRematch').onclick=()=>online.requestRematch();}
@@ -222,3 +227,4 @@ function updateOnlineUI(){
 }
 if(new URLSearchParams(location.search).get('mode')==='online')setMode('online');
 if(sessionStorage.getItem('five-forms-online')){setMode('online');online.resume();}
+if(account)account.openRecoveryLink();
