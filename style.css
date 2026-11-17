@@ -6,7 +6,12 @@
 
 .account-area{border:1px solid var(--line);padding:16px;margin:12px 0;color:var(--muted)}
 .account-area button,.account-links button{color:var(--accent);font:10px var(--mono);margin-left:12px}
-.scoreboard h2{display:inline-block;font:500 22px var(--display);margin:14px 0 2px;color:var(--text)}
+.scoreboard{border:1px solid var(--line);margin-top:18px}
+.scoreboard summary{cursor:pointer;padding:12px 14px;color:var(--text);font:500 22px var(--display);list-style-position:inside}
+.scoreboard summary::marker{color:var(--accent);font-size:.7em}
+.scoreboard[open] summary{border-bottom:1px solid var(--line)}
+.scoreboard-content{padding:2px 14px 12px}
+.scoreboard button{color:var(--accent);font:10px var(--mono);margin:10px 0}
 .scoreboard ol{columns:2;padding-left:22px;margin:8px 0;line-height:1.9}
 .scoreboard p{margin:4px 0}
 #accountForm label{display:block;color:var(--text);font:10px var(--mono);margin:12px 0}

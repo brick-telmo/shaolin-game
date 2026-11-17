@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {ARENAS} from '../arena-data.js';
 import {CosmosStore} from './cosmos-store.js';
 import {AzureMatchmakingService} from './online-service.js';
 import {PROTOCOL} from '../online-state.js';
@@ -45,11 +46,11 @@ class FakeContainer {
   }
 }
 
-function setup() {
+function setup({random = () => 0} = {}) {
   const db = new FakeContainer(), store = new CosmosStore(db);
   for (const id of ['a', 'b', 'c', 'd', 'e']) db.save({id, kind: 'account', victories: 0});
   let time = 100000;
-  const service = new AzureMatchmakingService(store, {now: () => time, random: () => 0});
+  const service = new AzureMatchmakingService(store, {now: () => time, random});
   const call = async (user, route, body = {}, headers = {}) => {
     const response = await service.handle(new Request('https://game.test/api/online/' + route, {
       method: 'POST',
@@ -58,7 +59,7 @@ function setup() {
     }));
     return {httpStatus: response.status, ...await response.json()};
   };
-  return {db, call, advance: ms => { time += ms; }};
+  return {db, call, advance: ms => { time += ms; }, service};
 }
 
 test('concurrent joins reserve each player only once and pair atomically', async () => {
@@ -74,6 +75,23 @@ test('concurrent joins reserve each player only once and pair atomically', async
     for (const id of [room.p0, room.p1])
       assert.equal(lobby.players.find(p => p.id === id).match_id, room.id);
   }
+});
+
+test('online matches and mutual rematches choose a server-random arena', async () => {
+  const choices = [0, 0.999];
+  const {call, service} = setup({random: () => choices.shift() ?? 0});
+  await call('a', 'join', {form: 'tiger'});
+  const match = await call('b', 'join', {form: 'crane'});
+  assert.equal(match.game.arena, ARENAS[0].id);
+
+  await service.mutate(match.matchId, 'a', state => {
+    state.started = true;
+    state.game.phase = 'over';
+    state.game.winner = 0;
+  });
+  await call('a', 'rematch', {matchId: match.matchId});
+  const rematch = await call('b', 'rematch', {matchId: match.matchId});
+  assert.equal(rematch.game.arena, ARENAS.at(-1).id);
 });
 
 test('concurrent frames keep both players inputs and leaving ends the match', async () => {
