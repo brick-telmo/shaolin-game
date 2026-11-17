@@ -1,6 +1,7 @@
 import {readFile,mkdir,writeFile,cp,rm} from 'node:fs/promises';
 import {build} from 'esbuild';
-export const clientFiles=['index.html','style.css','app.js','core.js','render.js','arena-data.js','arenas.js','arena-motion.js','story.js','story-data.js','showcase-shortcut.js','boss-demo.html','boss-demo.css','boss-demo.js','icon.svg','online-client.js','online-state.js'];
+import {clientFiles} from './client-assets.js';
+export {clientFiles} from './client-assets.js';
 const types={html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',svg:'image/svg+xml'};
 const assets=Object.fromEntries(await Promise.all(clientFiles.map(async name=>['/'+name,{body:await readFile(name,'utf8'),type:types[name.split('.').pop()]}])));
 await mkdir('.build',{recursive:true});await writeFile('.build/assets.js','export default '+JSON.stringify(assets)+';');

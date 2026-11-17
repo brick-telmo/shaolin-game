@@ -193,7 +193,7 @@ function updateOnlineUI(){
  const opponentAway=state==='matched'&&!over&&online.serverTime-online.seen?.[1-online.side]>1500;
  const title=online.reconnecting?'Reconnecting…':opponentAway?'Opponent reconnecting…':state==='queued'?'Looking for another fighter…':state==='joining'?'Entering the queue…':state==='leaving'?'Leaving the courtyard…':over?'The duel is complete.':waiting?'Opponent found. Preparing the fight…':state==='matched'?'A human opponent. A shared courtyard.':state==='error'?'Unable to connect.':'Find your next rival.';
  $('onlineTitle').textContent=title;$('statusText').textContent=title;
- $('onlineDetail').textContent=online.reconnecting?'Return within 10 seconds to keep your place.':opponentAway?'Your opponent has 10 seconds to return.':state==='queued'?'Stay here. Your match starts automatically when another player joins.':state==='matched'?'WASD · F/G/H · Online matches keep running when you switch tabs.':'Choose a style below, then enter the queue. Sign in with ChatGPT to play online.';
+ $('onlineDetail').textContent=online.reconnecting?'Return within 10 seconds to keep your place.':opponentAway?'Your opponent has 10 seconds to return.':state==='queued'?'Stay here. Your match starts automatically when another player joins.':state==='matched'?'WASD · F/G/H · Online matches keep running when you switch tabs.':document.documentElement.dataset.authProvider==='azure'?'Choose a style below, then enter the queue. Sign in with Microsoft or GitHub to play online.':'Choose a style below, then enter the queue. Sign in with ChatGPT to play online.';
  $('stageHint').textContent='WASD + F/G/H · THREE LIVES · HOME +1%';
  if(signature!==onlineScreen){
   onlineScreen=signature;$('overlay').hidden=state==='matched'&&!over&&!waiting;
@@ -201,7 +201,7 @@ function updateOnlineUI(){
   if(['idle','error'].includes(state)){
    setOverlay('<span class="overline">ONLINE DUELS</span><h2>Across the world.<br>In one courtyard.</h2><p id="onlineError">Choose your style. We will find your opponent.</p><button class="primary-button" id="findOpponent">FIND OPPONENT <span>↗</span></button><small>3 LIVES EACH · AUTOMATIC MATCHMAKING</small>');
    if(online.error)$('onlineError').textContent=online.error;
-   if(online.needsSignIn){$('findOpponent').outerHTML='<a class="primary-button" href="/signin-with-chatgpt?return_to=%2F%3Fmode%3Donline" target="_top">SIGN IN WITH CHATGPT ↗</a>';}else $('findOpponent').onclick=()=>online.join(selected[0]);
+   if(online.needsSignIn){$('findOpponent').outerHTML=document.documentElement.dataset.authProvider==='azure'?'<a class="primary-button" href="/.auth/login/aad">SIGN IN WITH MICROSOFT ↗</a> <a class="secondary-button" href="/.auth/login/github">SIGN IN WITH GITHUB ↗</a>':'<a class="primary-button" href="/signin-with-chatgpt?return_to=%2F%3Fmode%3Donline" target="_top">SIGN IN WITH CHATGPT ↗</a>';}else $('findOpponent').onclick=()=>online.join(selected[0]);
   }else if(['queued','joining','leaving'].includes(state)){
    setOverlay('<span class="overline">THE NEXT CHALLENGE</span><h2>Patience is a form.</h2><p>Waiting for another human to enter the courtyard.</p><div class="queue-pulse" aria-hidden="true"><i></i><i></i><i></i></div><button class="secondary-button" id="cancelQueue">CANCEL SEARCH</button>');
    $('cancelQueue').disabled=state==='leaving';$('cancelQueue').onclick=()=>requestOnlineLeave();

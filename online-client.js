@@ -16,6 +16,7 @@ export class OnlineClient {
   async sendRequest(route,body={}) {
     const response=await this.fetcher('/api/online/'+route,{method:'POST',headers:{'content-type':'application/json'},
       body:JSON.stringify({client:this.client,protocol:PROTOCOL,...body}),signal:AbortSignal.timeout(4500)});
+    if(response.status===401){const error=new Error('Sign in to play online.');error.status=401;throw error;}
     const data=await response.json();
     if(!response.ok){const error=new Error(data.error||'Connection interrupted.');error.status=response.status;throw error;}
     return data;

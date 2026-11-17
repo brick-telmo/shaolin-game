@@ -3,13 +3,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test *.test.mjs",
+    "test": "node --test *.test.mjs azure/*.test.mjs",
     "start": "node dev-server.mjs",
     "build": "node build.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "engines": {
     "node": ">=22.16"
+  },
+  "dependencies": {
+    "@azure/cosmos": "^4.10.2",
+    "@azure/functions": "^4.17.1"
   },
   "devDependencies": {
     "esbuild": "^0.25.12",

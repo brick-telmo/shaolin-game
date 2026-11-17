@@ -37,6 +37,14 @@ Production identity comes only from the Sites `oai-authenticated-user-id` header
 
 For Sites, retain the existing project ID in `.openai/hosting.json`, remove the `static` entry, and set `"d1": "DB"` and `"r2": null`. `npm run build` embeds only explicitly listed browser assets and bundles the Worker to `dist/server/index.js`; it does not expose source tests, database schema, or server modules as static routes. Generated immutable schema migrations live in `drizzle/`. After editing `db/schema.ts`, run `npm run db:generate` and inspect the new migration before deploying. Sites applies migrations during deployment.
 
+### Azure hosting
+
+The Azure deployment uses Static Web Apps Free with its managed Functions API and a single-region Cosmos DB free-tier account. Players sign in with Microsoft or GitHub. Azure uses a separate Cosmos-backed matchmaking adapter; the original Worker and local development server remain available.
+
+`infra/main.bicep` provisions the resource group, static app, and a shared 1,000-RU/s database. After provisioning, run `node infra/configure.mjs <subscription-id> <resource-group> <static-site> <cosmos-account>` to configure the API without printing credentials. Set the GitHub Actions secret `AZURE_STATIC_WEB_APPS_API_TOKEN` to the static app's deployment token. The Azure workflow builds and deploys changes pushed to `main`.
+
+The public Cosmos endpoint uses a server-side account key because managed Static Web Apps Functions do not support managed identity. Restrict access to Azure application settings and rotate the key if exposed. Free grants are limited: active matches can generate up to 72,000 API requests per hour, and overages can incur charges. Budget alerts do not stop usage. Cosmos throttling, serverless cold starts, and the single-partition lobby limit this deployment to small casual workloads.
+
 ## Boss showcase
 
 Open `boss-demo.html` and press **Watch the fight** to run a replayable, roughly one-minute scripted exhibition. It uses the real combat renderer, attacks and transformation rules, with a timed health bar that guarantees every boss appearance and the full ending are shown. Pause or replay it at any time. In the game, double-tap Ctrl within 650 milliseconds to reveal the glowing top-right ✦ button, then click it to launch the showcase automatically. The button is hidden until the shortcut is used; ordinary Ctrl key combinations do not reveal it. The main game continues to use normal combat damage.

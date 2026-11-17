@@ -1,0 +1,1 @@
+export const clientFiles=['index.html','style.css','app.js','core.js','render.js','arena-data.js','arenas.js','arena-motion.js','story.js','story-data.js','showcase-shortcut.js','boss-demo.html','boss-demo.css','boss-demo.js','icon.svg','online-client.js','online-state.js'];

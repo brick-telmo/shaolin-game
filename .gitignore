@@ -7,3 +7,4 @@ dist/
 .build/
 *.sqlite
 *.sqlite-*
+.copilot-azure/

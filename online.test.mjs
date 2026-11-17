@@ -145,3 +145,8 @@ test('client cancellation ignores a late join response',async()=>{
  const joining=client.join('tiger');await Promise.resolve();await Promise.resolve();const leaving=client.leave();finishJoin(Response.json({status:'queued'}));await joining;await leaving;
  assert.equal(client.status,'idle');assert.equal(client.timer,null);
 });
+test('client recognizes sign-in even when the host returns a non-JSON 401',async()=>{
+ const storage=new Map();storage.getItem=storage.get.bind(storage);storage.setItem=storage.set.bind(storage);storage.removeItem=storage.delete.bind(storage);
+ const client=new OnlineClient(()=>{}, {storage,fetcher:async()=>new Response('Unauthorized',{status:401})});
+ await client.join('tiger');assert.equal(client.needsSignIn,true);assert.equal(client.status,'error');
+});
