@@ -52,7 +52,7 @@ function setMode(next){
  if(mode===next)return;if(mode==='online'&&!['idle','error'].includes(online.status)){requestOnlineLeave(()=>setMode(next));return;}mode=next;document.querySelector('.fighter-hud .player-label').textContent='P1';$('selectP1').firstChild.textContent='P1 ';ending=null;campaign=null;selecting=0;
  for(const id of ['story','cpu','local','online']){$(id+'Mode').classList.toggle('selected',mode===id);$(id+'Mode').setAttribute('aria-pressed',mode===id);}
  $('difficulty').disabled=['local','online'].includes(mode);$('onlineBanner').hidden=mode!=='online';document.body.classList.toggle('online-mode',mode==='online');onlineScreen='';reset();selectPlayer(0);if(mode==='local')toast('Two players · one keyboard. See All controls.');
- $('accountArea').hidden=mode!=='online'||!account;if(mode==='online'&&account){account.refresh();account.scores();}
+ $('accountArea').hidden=mode!=='online'||!account;$('scoreboard').hidden=!account;if(mode==='online'&&account){account.refresh();account.scores();}
 }
 function prepareMatch(){keys={};accumulator=0;lastScreen='';announcementTime=0;renderer.particles=[];renderer.texts=[];renderer.transformPulse=0;renderRoster();updateArenaUI();updateUI();}
 function reset(startNow=false,keepRetry=false){
@@ -163,7 +163,7 @@ $('stylesNav').onclick=showStyles;$('inspiration').onclick=showStyles;$('control
 $('infoDialog').addEventListener('click',e=>{if(e.target===$('infoDialog')){const r=$('infoDialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();}});
 $('infoDialog').addEventListener('close',()=>{keys={};if(modalPaused&&match.phase==='paused')match.pause();if(modalEndingPaused&&ending)ending.paused=false;modalPaused=false;modalEndingPaused=false;});
 document.querySelectorAll('[data-key]').forEach(button=>{button.addEventListener('pointerdown',e=>{e.preventDefault();button.setPointerCapture(e.pointerId);if(!ending)keys[button.dataset.key]=true;if(mode==='online')online.setInput(controls(0));});for(const type of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(type,()=>{keys[button.dataset.key]=false;if(mode==='online')online.setInput(controls(0));});});
-renderArenaOptions();setMode('story');installShowcaseShortcut();requestAnimationFrame(loop);
+renderArenaOptions();setMode('story');if(account)account.scores();installShowcaseShortcut();requestAnimationFrame(loop);
 
 
 function onlineChanged(){
