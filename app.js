@@ -5,17 +5,19 @@ import {Renderer} from './render.js';
 import {ARENAS} from './arena-data.js';
 import {StoryCampaign} from './story.js';
 import {installShowcaseShortcut} from './showcase-shortcut.js';
+import {createTouchControls} from './touch-controls.js';
 import {BOSS_NAME,BOSS_FORMS,CHAPTERS,ENDING} from './story-data.js';
 const $=id=>document.getElementById(id);
 const canvas=$('game'),renderer=new Renderer(canvas);
 let selected=['tiger','dragon'],mode='cpu',selecting=0,selectedArena='volcano',match=new Match(...selected);
 let campaign=null,ending=null,soloRetries=1,keys={},lastTime=null,accumulator=0,lastScreen='',soundOn=false,audioCtx,toastTimer,announcementTime=0,modalPaused=false,modalEndingPaused=false;
 const bindings=[{left:'a',right:'d',jump:'w',guard:'s',strike:'f',kick:'g',special:'h'},{left:'arrowleft',right:'arrowright',jump:'arrowup',guard:'arrowdown',strike:'j',kick:'k',special:'l'}];
-function controls(i){return Object.fromEntries(Object.entries(bindings[i]).map(([action,key])=>[action,!!keys[key]]));}
+function controls(i){return Object.fromEntries(Object.entries(bindings[i]).map(([action,key])=>[action,!!keys[key]||(i===0&&touch.input[action])]));}
 function toast(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),2400);}
 function audio(type){if(!soundOn)return;try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();osc.connect(gain);gain.connect(audioCtx.destination);const now=audioCtx.currentTime;const config={hit:[150,45,.13,'sawtooth'],block:[340,130,.1,'triangle'],attack:[170,80,.07,'triangle'],jump:[210,380,.12,'sine'],start:[330,660,.23,'sine'],fight:[440,880,.2,'triangle'],ko:[220,55,.5,'triangle'],over:[330,660,.7,'sine'],select:[440,550,.07,'sine']}[type];if(!config)return;osc.type=config[3];osc.frequency.setValueAtTime(config[0],now);osc.frequency.exponentialRampToValueAtTime(config[1],now+config[2]);gain.gain.setValueAtTime(type==='hit'?.055:.035,now);gain.gain.exponentialRampToValueAtTime(.001,now+config[2]);osc.start(now);osc.stop(now+config[2]);}catch{soundOn=false;$('soundText').textContent='SOUND OFF';}}
 
 const online=new OnlineClient(onlineChanged);
+const touch=createTouchControls($('movementZone'),$('movementIndicator'),document.querySelectorAll('[data-action]'),()=>{if(mode==='online')online.setInput(controls(0));});
 const account=document.documentElement.dataset.authProvider==='azure'?new AccountClient(()=>{online.needsSignIn=!account.username;onlineScreen='';if(mode==='online')updateOnlineUI();}):null;
 let onlineScreen='',onlineMatchId=null;
 function canChooseFighter(){if(mode==='online')return ['idle','error'].includes(online.status);return mode==='story'?campaign.chapterIndex===0&&!campaign.started:['ready','over'].includes(match.phase);}
@@ -54,19 +56,19 @@ function setMode(next){
  $('difficulty').disabled=['local','online'].includes(mode);$('onlineBanner').hidden=mode!=='online';document.body.classList.toggle('online-mode',mode==='online');onlineScreen='';reset();selectPlayer(0);if(mode==='local')toast('Two players · one keyboard. See All controls.');
  $('accountArea').hidden=mode!=='online'||!account;$('scoreboard').hidden=!account;if(mode==='online'&&account){account.refresh();account.scores();}
 }
-function prepareMatch(){keys={};accumulator=0;lastScreen='';announcementTime=0;renderer.particles=[];renderer.texts=[];renderer.transformPulse=0;renderRoster();updateArenaUI();updateUI();}
+function prepareMatch(){keys={};touch.clear();accumulator=0;lastScreen='';announcementTime=0;renderer.particles=[];renderer.texts=[];renderer.transformPulse=0;renderRoster();updateArenaUI();updateUI();}
 function reset(startNow=false,keepRetry=false){
  if(!keepRetry)soloRetries=1;
- ending=null;$('arena').classList.remove('cinematic');$('endingOverlay').hidden=true;$('touchControls').hidden=false;
+ ending=null;$('arena').classList.remove('cinematic');$('endingOverlay').hidden=true;
  if(mode==='story'){campaign=new StoryCampaign(selected[0],$('difficulty').value);match=campaign.match;}
  else match=new Match(...selected,mode,$('difficulty').value,Math.random,selectedArena);
  prepareMatch();if(startNow)start();
 }
-function start(){if(mode==='online'){online.join(selected[0]);return;}keys={};if(mode==='story')campaign.start();else if(match.phase==='ready')match.start();else reset(true);canvas.focus({preventScroll:true});audio('select');}
+function start(){if(mode==='online'){online.join(selected[0]);return;}keys={};touch.clear();if(mode==='story')campaign.start();else if(match.phase==='ready')match.start();else reset(true);canvas.focus({preventScroll:true});audio('select');}
 function nextChapter(){if(!campaign.advance())return;if(campaign.phase==='ending'){beginEnding();return;}match=campaign.match;prepareMatch();canvas.focus({preventScroll:true});}
 function retrySolo(){if(mode!=='cpu'||match.phase!=='over'||match.winner===0||soloRetries<=0)return;soloRetries--;reset(true,true);}
 function retryChapter(){if(!campaign.retry())return;match=campaign.match;prepareMatch();canvas.focus({preventScroll:true});}
-function togglePause(){keys={};if(mode==='online'){toast('Online fights keep running. Use Leave online to forfeit.');return;}if(ending){ending.paused=!ending.paused;updateUI();}else match.pause();canvas.focus({preventScroll:true});}
+function togglePause(){keys={};touch.clear();if(mode==='online'){online.setInput({});toast('Online fights keep running. Use Leave online to forfeit.');return;}if(ending){ending.paused=!ending.paused;updateUI();}else match.pause();canvas.focus({preventScroll:true});}
 function setOverlay(html){$('overlayContent').innerHTML=html;}
 function renderStoryOverlay(){
  const chapter=campaign.chapter;
@@ -96,14 +98,19 @@ function updateHUD(){
  $('bossForms').hidden=!match.bossBattle||['ready','over'].includes(match.phase)||!!ending;
  if(match.bossBattle){const boss=match.fighters[1];$('bossForms').innerHTML=BOSS_FORMS.map((id,i)=>`<span class="${i===boss.bossPhase?'current':i<boss.bossPhase?'passed':''}">${id==='mixed'?'武':FORMS.find(f=>f.id===id).han}<small>${100-i*20}%</small></span>`).join('');}
 }
+function updateTouchControls(){
+ const active=!ending&&!$('infoDialog').open&&!$('accountDialog').open&&['fight','countdown','ko'].includes(match.phase)&&(mode!=='online'||online.status==='matched'&&!['ready','over'].includes(online.authoritative?.phase));
+ const controls=$('touchControls');if(controls.hidden===active){controls.hidden=!active;if(!active)touch.clear();}
+}
 function updateUI(){
+ updateTouchControls();
  updateHUD();if(mode==='online'){updateOnlineUI();return;}$('pause').textContent=(ending?ending.paused:match.phase==='paused')?'▶':'Ⅱ';$('pause').setAttribute('aria-label',(ending?ending.paused:match.phase==='paused')?'Resume game':'Pause game');$('pause').disabled=!ending&&['ready','over'].includes(match.phase);
  if(ending){$('statusText').textContent=ending.paused?'Ending paused.':'Story complete. A true Shaolin master.';document.querySelector('.desktop-hint').textContent='';return;}
  const screen=`${mode}:${campaign?.chapterIndex}:${campaign?.phase}:${match.phase}`;
  if(screen!==lastScreen){
   lastScreen=screen;updateArenaUI();$('overlay').hidden=!['ready','paused','over'].includes(match.phase);$('announcement').textContent='';
   if(match.phase==='ready'&&mode!=='story'){setOverlay('<span class="overline">THE COURTYARD AWAITS</span><h2>Stillness.<br>Then strike.</h2><p>Choose your style. Make every life count.</p><button class="primary-button" id="start">ENTER THE COURTYARD <span>↗</span></button><small>1 OR 2 PLAYERS <span>·</span> 3 LIVES EACH</small>');$('start').onclick=start;$('statusText').textContent='Ready when you are.';}
-  if(match.phase==='paused'){setOverlay('<span class="overline">TAKE A BREATH</span><h2>Find your center.</h2><p>Your match is paused.</p><button class="primary-button" id="resume">RESUME FIGHT <span>→</span></button><button class="secondary-button" id="pauseControls">View controls</button>');$('resume').onclick=togglePause;$('pauseControls').onclick=showControls;$('statusText').textContent='Paused. Take your time.';}
+  if(match.phase==='paused'){setOverlay('<span class="overline">TAKE A BREATH</span><h2>Find your center.</h2><p>Your match is paused.</p><button class="primary-button" id="resume">RESUME FIGHT <span>→</span></button><button class="secondary-button" id="pauseControls">View controls</button>');$('resume').onclick=togglePause;$('pauseControls').onclick=showControlsWithTouchGuide;$('statusText').textContent='Paused. Take your time.';}
   if(mode==='story'&&['ready','over'].includes(match.phase))renderStoryOverlay();
   if(match.phase==='over'&&mode!=='story'){
    const winner=match.winner,text=winner<0?'An even match.':`${match.fighters[winner].form.name} prevails.`,lost=mode==='cpu'&&winner!==0,label=winner<0?'DRAW':winner===1&&mode==='cpu'?'THE CPU TAKES THE COURTYARD':`PLAYER ${winner+1} WINS`;
@@ -117,7 +124,7 @@ function updateUI(){
  document.querySelector('.desktop-hint').textContent=mode==='story'?'':match.phase==='ready'?'Choose a fighter below, then enter the courtyard.':'Reset to choose new fighters.';
  $('stageHint').textContent=match.bossBattle?'FIVE FORMS · +2% BOSS SPEED':match.phase==='ready'?'A LITTLE FOCUS GOES A LONG WAY.':'SPECIAL: 40 QI · HOLD DOWN TO GUARD';
 }
-function beginEnding(){keys={};$('arenaName').textContent='THE TEMPLE · DAWN';ending={beat:0,time:0,total:0,paused:false};$('arena').classList.add('cinematic');$('endingOverlay').hidden=false;$('touchControls').hidden=true;renderEndingText();audio('over');}
+function beginEnding(){keys={};touch.clear();$('arenaName').textContent='THE TEMPLE · DAWN';ending={beat:0,time:0,total:0,paused:false};$('arena').classList.add('cinematic');$('endingOverlay').hidden=false;$('touchControls').hidden=true;renderEndingText();audio('over');}
 function renderEndingText(){
  const beat=ENDING[ending.beat],final=ending.beat===ENDING.length-1;
  $('endingOverlay').innerHTML=`<div class="ending-pages">${ENDING.map((_,i)=>`<i class="${i===ending.beat?'active':''}"></i>`).join('')}</div><span class="overline">${beat.eyebrow}</span><h2>${beat.title}</h2><p>${beat.text}</p><div class="ending-actions">${final?'<button class="primary-button" id="newJourney">NEW JOURNEY <span>↗</span></button><button class="secondary-button" id="replayEnding">Replay ending</button>':'<button class="primary-button" id="endingNext">CONTINUE <span>→</span></button><button class="secondary-button" id="endingSkip">Skip to epilogue</button>'}</div>`;
@@ -138,10 +145,11 @@ function loop(now){
  }
  updateUI();requestAnimationFrame(loop);
 }
-function openDialog(content){keys={};if(mode==='online')online.setInput({});modalPaused=mode!=='online'&&match.phase!=='paused'&&['fight','countdown','ko'].includes(match.phase);modalEndingPaused=!!ending&&!ending.paused;if(modalPaused)match.pause();if(ending)ending.paused=true;$('dialogContent').innerHTML=content;$('infoDialog').showModal();}
+function openDialog(content){keys={};touch.clear();if(mode==='online')online.setInput({});modalPaused=mode!=='online'&&match.phase!=='paused'&&['fight','countdown','ko'].includes(match.phase);modalEndingPaused=!!ending&&!ending.paused;if(modalPaused)match.pause();if(ending)ending.paused=true;$('dialogContent').innerHTML=content;$('infoDialog').showModal();}
 function showControls(){openDialog(`<span class="modal-eyebrow">A MOMENT OF PRACTICE</span><h2>Learn the rhythm.</h2><div class="guide-grid">${[1,2].map(n=>`<article><h3>Player ${n}</h3>${[['Move',n===1?'A / D':'← / →'],['Jump',n===1?'W':'↑'],['Guard',n===1?'S':'↓'],['Strike',n===1?'F':'J'],['Kick',n===1?'G':'K'],['Special',n===1?'H':'L']].map(([a,k])=>`<div class="key-row"><span>${a}</span><kbd>${k}</kbd></div>`).join('')}</article>`).join('')}</div><ul class="rules-list"><li><strong>Story mode:</strong> defeat Snake, Tiger, Leopard, Dragon and Crane at their home courts, then face the Fivefold Master at the volcano. Each new chapter restores your three lives. Each fight allows one retry (two attempts total), with three lives per attempt. Use your retry without losing earlier victories; a second defeat ends the journey. VS CPU also allows only one retry per fight.</li><li><strong>Final boss:</strong> one continuous 300-health bar, five forms, and +2% movement speed. Forms change at 80%, 60% and 40% health. At 20%, the Golden Master mixes all five styles, changing techniques with each attack. The boss keeps its remaining health and form when you lose a life. Defeat it to unlock the ending.</li><li>In regular duels, each fighter begins with <strong>three lives</strong> and 100 health. A knockout costs one life. Both fighters return to full health for the next exchange.</li><li>Take all three opposing lives to win a regular duel; deplete the final boss’s single health bar to complete the story. There is no time limit.</li><li>Choose one of six arenas before the match. Your animal style receives exactly <strong>+1% movement speed</strong> on its home court, including special-move travel. The bonus applies equally to Player 1, Player 2 and the CPU. Both matching fighters benefit in a mirror match. The volcano is neutral ground.</li><li>Specials spend <strong>40 qi</strong>. Qi restores over time and when either fighter lands a hit. The qi bar glows when a special is available.</li><li>Hold Guard to reduce frontal damage. Jump to evade attacks. Holding an attack repeats it after recovery.</li><li><strong>Online:</strong> choose your fighter and Find opponent. Two waiting humans are matched automatically. Both use WASD and F/G/H (or touch controls), whichever side they spawn on. Three lives each, a random arena, and the same +1% home advantage. Return within 10 seconds after a disconnect or forfeit. Both players must agree to a rematch. Online matches keep running when you open controls or change tabs.</li><li>In offline modes, press <kbd>Esc</kbd> to pause. The match also pauses when you switch away. On phones, touch controls operate Player 1; local two-player mode uses a shared keyboard.</li></ul><p>Tip: create space after your attack. Every style has a different reach, speed, and recovery window.</p>`);}
 function showStyles(){openDialog(`<span class="modal-eyebrow">THE ROOTS OF THE FIVE FORMS</span><h2>Tradition in motion.</h2><p>These five human martial artists draw on the animal traditions of Shaolin kung fu. Their traits are inspired by descriptions from Shaolin schools; the move names, balance and visual effects are original arcade interpretations. Traditions vary across lineages.</p>${FORMS.map(f=>`<article class="style-entry"><div style="color:${f.color}"><h3>${f.name}</h3><small>${f.han} / ${f.id.toUpperCase()}</small></div><div><p>${f.description}</p><p class="move-note">${f.special} — ${f.specialText}</p></div></article>`).join('')}<div class="source-links">Further reading from practicing schools:<br><a href="https://shaolin.org/answers/sp-issues/mark12-five-animals.html" target="_blank" rel="noopener noreferrer">Shaolin Wahnam · The Five Animals ↗</a><a href="https://shaolingreendragonkungfuassociation.com/the-5-animals/" target="_blank" rel="noopener noreferrer">Shaolin Green Dragon · Animal characteristics ↗</a></div>`);}
 
+function showControlsWithTouchGuide(){showControls();$('dialogContent').insertAdjacentHTML('beforeend','<p><strong>Phone controls:</strong> drag on the left side of the arena to move left or right, drag up to jump, or down to guard. Use the Strike, Kick and Special buttons on the right while dragging.</p>');}
 function closeDialog(){if($('infoDialog').open)$('infoDialog').close();}
 document.addEventListener('keydown',e=>{
  if($('infoDialog').open||$('accountDialog').open)return;const key=e.key.toLowerCase(),target=e.target;if(['INPUT','SELECT','TEXTAREA'].includes(target.tagName))return;
@@ -151,7 +159,7 @@ document.addEventListener('keydown',e=>{
  if(Object.values(bindings[0]).includes(key)||Object.values(bindings[1]).includes(key)){if(!['ready','over'].includes(match.phase))e.preventDefault();keys[key]=true;if(mode==='online')online.setInput(controls(0));}
 });
 document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;if(mode==='online')online.setInput(controls(0));});
-function pauseForFocus(){keys={};if(mode==='online'){online.setInput({});return;}if(ending)ending.paused=true;else if(['fight','countdown','ko'].includes(match.phase))match.pause();}
+function pauseForFocus(){keys={};touch.clear();if(mode==='online'){online.setInput({});return;}if(ending)ending.paused=true;else if(['fight','countdown','ko'].includes(match.phase))match.pause();}
 window.addEventListener('blur',pauseForFocus);document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseForFocus();});
 for(const id of ['story','cpu','local','online'])$(id+'Mode').onclick=()=>setMode(id);
 $('selectP1').onclick=()=>selectPlayer(0);$('selectP2').onclick=()=>selectPlayer(1);
@@ -159,10 +167,9 @@ $('difficulty').onchange=()=>{match.difficulty=$('difficulty').value;if(campaign
 $('pause').onclick=togglePause;$('reset').onclick=()=>{if(mode==='online'){requestOnlineLeave();return;}reset();toast(mode==='story'?'A new story · choose your fighter.':'New match · three lives each.');};
 $('sound').onclick=()=>{soundOn=!soundOn;$('soundText').textContent=soundOn?'SOUND ON':'SOUND OFF';$('sound').setAttribute('aria-label',soundOn?'Turn sound off':'Turn sound on');$('sound').title=soundOn?'Turn sound off':'Turn sound on';audio('select');};
 $('fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await $('arena').requestFullscreen();}catch{toast('Fullscreen is unavailable in this browser.');}};
-$('stylesNav').onclick=showStyles;$('inspiration').onclick=showStyles;$('controlsNav').onclick=showControls;$('allControls').onclick=showControls;$('playNav').onclick=()=>$('arena').scrollIntoView({behavior:'smooth',block:'center'});$('closeDialog').onclick=closeDialog;
+$('stylesNav').onclick=showStyles;$('inspiration').onclick=showStyles;$('controlsNav').onclick=showControlsWithTouchGuide;$('allControls').onclick=showControlsWithTouchGuide;$('playNav').onclick=()=>$('arena').scrollIntoView({behavior:'smooth',block:'center'});$('closeDialog').onclick=closeDialog;
 $('infoDialog').addEventListener('click',e=>{if(e.target===$('infoDialog')){const r=$('infoDialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();}});
 $('infoDialog').addEventListener('close',()=>{keys={};if(modalPaused&&match.phase==='paused')match.pause();if(modalEndingPaused&&ending)ending.paused=false;modalPaused=false;modalEndingPaused=false;});
-document.querySelectorAll('[data-key]').forEach(button=>{button.addEventListener('pointerdown',e=>{e.preventDefault();button.setPointerCapture(e.pointerId);if(!ending)keys[button.dataset.key]=true;if(mode==='online')online.setInput(controls(0));});for(const type of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(type,()=>{keys[button.dataset.key]=false;if(mode==='online')online.setInput(controls(0));});});
 renderArenaOptions();setMode('story');if(account)account.scores();installShowcaseShortcut();requestAnimationFrame(loop);
 
 
