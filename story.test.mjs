@@ -27,38 +27,38 @@ test('losing and retrying keeps completed courts and restores the current chapte
 test('ending cannot be unlocked by a loss or before all six victories',()=>{
  const c=new StoryCampaign();assert.equal(c.complete(),false);assert.equal(c.advance(),false);clearChapter(c);assert.equal(c.complete(),false);c.advance();assert.equal(c.phase,'intro');assert.equal(ENDING.length,3);assert.match(ENDING.at(-1).text,/true Shaolin master/);
 });
-test('boss transforms exactly at 80%, 60%, 40% and 20% health',()=>{
+test('boss transforms exactly at 90%, 80%, 70%, 60% and 50% health',()=>{
  const m=bossMatch(),b=m.fighters[1];assert.equal(b.form.id,'snake');assert.equal(b.hp,BOSS_MAX_HEALTH);assert.equal(b.lives,1);
- for(let i=1;i<5;i++){
-  const threshold=BOSS_MAX_HEALTH*(1-i*.2);b.hp=threshold+.0001;m.syncBossForm(b);assert.equal(b.form.id,BOSS_FORMS[i-1]);
-  b.hp=threshold;m.syncBossForm(b);assert.equal(b.form.id,i===4?'snake':BOSS_FORMS[i]);assert.equal(b.bossMixed,i===4);assert.equal(b.bossPhase,i);assert.equal(b.hp,threshold);assert.equal(m.events.filter(e=>e.type==='transform').length,i);
+ for(let i=1;i<6;i++){
+  const threshold=BOSS_MAX_HEALTH*(1-i*.1);b.hp=threshold+.0001;m.syncBossForm(b);assert.equal(b.form.id,BOSS_FORMS[i-1]);
+  b.hp=threshold;m.syncBossForm(b);assert.equal(b.form.id,i===5?'snake':BOSS_FORMS[i]);assert.equal(b.bossMixed,i===5);assert.equal(b.bossPhase,i);assert.equal(b.hp,threshold);assert.equal(m.events.filter(e=>e.type==='transform').length,i);
   m.syncBossForm(b);assert.equal(m.events.filter(e=>e.type==='transform').length,i);
  }
- assert.equal(bossPhaseForHealth(300),0);assert.equal(bossPhaseForHealth(0),4);
+ assert.equal(bossPhaseForHealth(300),0);assert.equal(bossPhaseForHealth(0),5);
 });
 test('a hit crossing a threshold transforms immediately and cancels the old attack',()=>{
- const m=bossMatch(),[a,b]=m.fighters;b.hp=241;m.beginAttack(b,'special');assert.ok(b.attack);m.hit(a,b,{type:'strike',facing:1});assert.equal(b.form.id,'tiger');assert.equal(b.hp,230);assert.equal(b.attack,null);assert.equal(b.invulnerable,.35);assert.ok(b.cooldown>=.45);
+ const m=bossMatch(),[a,b]=m.fighters;b.hp=271;m.beginAttack(b,'special');assert.ok(b.attack);m.hit(a,b,{type:'strike',facing:1});assert.equal(b.form.id,'tiger');assert.equal(b.hp,260);assert.equal(b.attack,null);assert.equal(b.invulnerable,.35);assert.ok(b.cooldown>=.45);
 });
 test('large damage jumps to the correct form without healing or duplicate transitions',()=>{
  const m=bossMatch(),b=m.fighters[1];b.hp=50;m.syncBossForm(b);assert.equal(b.bossMixed,true);assert.equal(b.hp,50);m.syncBossForm(b);assert.equal(m.events.filter(e=>e.type==='transform').length,1);b.hp=0;m.syncBossForm(b);assert.equal(b.bossMixed,true);
 });
 test('every boss form moves exactly 2% faster and does not mutate the base form',()=>{
  const bases=FORMS.map(f=>f.speed);
- for(let i=0;i<5;i++){
-  const m=bossMatch(),b=m.fighters[1];b.hp=300-i*60;m.syncBossForm(b);const x=b.x;tick(m,30,[{},{left:true}]);close(x-b.x,b.form.speed*.5*1.02);assert.equal(m.movementMultiplier(m.fighters[0]),1);
+ for(let i=0;i<6;i++){
+  const m=bossMatch(),b=m.fighters[1];b.hp=300-i*30;m.syncBossForm(b);const x=b.x;tick(m,30,[{},{left:true}]);close(x-b.x,b.form.speed*.5*1.02);assert.equal(m.movementMultiplier(m.fighters[0]),1);
  }
  assert.deepEqual(FORMS.map(f=>f.speed),bases);
 });
 test('all five boss specials travel exactly 2% farther at the same attack rate',()=>{
- for(let i=0;i<5;i++){
-  const boss=bossMatch(),b=boss.fighters[1];b.hp=300-i*60;boss.syncBossForm(b);b.cooldown=0;
-  const normal=new Match('tiger',i===4?'snake':BOSS_FORMS[i],'local');normal.start();tick(normal,145);const n=normal.fighters[1],x=b.x;
+ for(let i=0;i<6;i++){
+  const boss=bossMatch(),b=boss.fighters[1];b.hp=300-i*30;boss.syncBossForm(b);b.cooldown=0;
+  const normal=new Match('tiger',i===5?'snake':BOSS_FORMS[i],'local');normal.start();tick(normal,145);const n=normal.fighters[1],x=b.x;
   boss.beginAttack(b,'special');normal.beginAttack(n,'special');tick(boss,10);tick(normal,10);close(x-b.x,(x-n.x)*1.02);assert.equal(b.attack.time,n.attack.time);
  }
 });
 test('boss health, form and speed persist when the player loses a life',()=>{
- const m=bossMatch(),[a,b]=m.fighters;b.hp=115;m.syncBossForm(b);a.hp=0;tick(m,250);
- assert.equal(m.phase,'fight');assert.equal(a.lives,2);assert.equal(a.hp,100);assert.equal(b.hp,115);assert.equal(b.form.id,'dragon');assert.equal(b.lives,1);assert.equal(m.movementMultiplier(b),1.02);
+ const m=bossMatch(),[a,b]=m.fighters;b.hp=200;m.syncBossForm(b);a.hp=0;tick(m,250);
+ assert.equal(m.phase,'fight');assert.equal(a.lives,2);assert.equal(a.hp,100);assert.equal(b.hp,200);assert.equal(b.form.id,'dragon');assert.equal(b.lives,1);assert.equal(m.movementMultiplier(b),1.02);
 });
 test('defeating the boss ends its single continuous health bar',()=>{
  const m=bossMatch();m.fighters[1].hp=0;tick(m,120);assert.equal(m.phase,'over');assert.equal(m.winner,0);assert.equal(m.fighters[1].lives,0);tick(m,300);assert.equal(m.fighters[1].hp,0);
